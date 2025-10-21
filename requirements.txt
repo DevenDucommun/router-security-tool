@@ -1,0 +1,28 @@
+# GUI Framework
+PyQt5>=5.15.7
+PyQt5-tools>=5.15.4.3.2
+
+# Serial/USB Communication
+pyserial>=3.5
+
+# SSH Connections
+paramiko>=2.11.0
+
+# System utilities
+psutil>=5.9.0
+
+# Report generation
+jinja2>=3.1.2
+markdown>=3.4.3
+
+# Logging and configuration
+pyyaml>=6.0
+
+# macOS specific for .dmg packaging
+py2app>=0.28.6
+
+# Development and testing
+pytest>=7.1.2
+pytest-qt>=4.2.0
+black>=22.6.0
+flake8>=5.0.4
