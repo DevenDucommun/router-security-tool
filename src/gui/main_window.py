@@ -21,8 +21,8 @@ from PyQt5.QtWidgets import (
     QSplitter,
     QMessageBox,
 )
-from PyQt5.QtCore import QThread, pyqtSignal, Qt
-from PyQt5.QtGui import QFont
+from PyQt5.QtCore import QThread, pyqtSignal, Qt, QTimer
+from PyQt5.QtGui import QFont, QColor, QPalette
 
 from connections.detector import ConnectionDetector
 from assessment.vulnerability_scanner import VulnerabilityScanner
@@ -36,6 +36,7 @@ class ScanWorker(QThread):
     progress = pyqtSignal(str)  # Status message
     found_connection = pyqtSignal(dict)  # Connection discovered
     scan_complete = pyqtSignal(list)  # All connections found
+    error = pyqtSignal(str)  # Error message
 
     def __init__(self):
         super().__init__()
@@ -43,7 +44,7 @@ class ScanWorker(QThread):
 
     def run(self):
         """Run the connection detection in background"""
-        self.progress.emit("Starting connection scan...")
+        self.progress.emit("🔍 Starting connection scan...")
 
         try:
             connections = self.detector.get_all_connections()
@@ -52,11 +53,11 @@ class ScanWorker(QThread):
 
             self.scan_complete.emit(connections)
             self.progress.emit(
-                f"Scan complete. Found {len(connections)} potential connections."
+                f"✅ Scan complete. Found {len(connections)} potential connections."
             )
         except Exception as e:
             logger.error(f"Scan failed: {e}")
-            self.progress.emit(f"Scan failed: {str(e)}")
+            self.error.emit(f"Connection scan failed: {str(e)}")
 
 
 class VulnerabilityScanWorker(QThread):
@@ -97,6 +98,9 @@ class MainWindow(QMainWindow):
         self.current_target_host = None
         self.scan_results = None
         self.init_ui()
+        
+        # Auto-start initial scan after UI is ready
+        QTimer.singleShot(500, self.auto_start_scan)
 
     def init_ui(self):
         """Initialize the user interface"""
@@ -136,8 +140,9 @@ class MainWindow(QMainWindow):
         detection_group = QGroupBox("Connection Detection")
         detection_layout = QVBoxLayout(detection_group)
 
-        self.scan_button = QPushButton("Scan for Connections")
+        self.scan_button = QPushButton("🔍 Scan for Connections")
         self.scan_button.clicked.connect(self.start_scan)
+        self.scan_button.setToolTip("Scan for available routers, switches, and network devices")
         detection_layout.addWidget(self.scan_button)
 
         self.connection_list = QListWidget()
@@ -200,10 +205,12 @@ class MainWindow(QMainWindow):
         progress_layout = QVBoxLayout(progress_group)
 
         self.progress_bar = QProgressBar()
+        self.progress_bar.setTextVisible(True)
         progress_layout.addWidget(self.progress_bar)
 
-        self.status_label = QLabel("Ready")
+        self.status_label = QLabel("⏳ Initializing...")
         self.status_label.setWordWrap(True)
+        self.status_label.setStyleSheet("QLabel { padding: 5px; font-size: 12px; }")
         progress_layout.addWidget(self.status_label)
 
         layout.addWidget(progress_group)
@@ -232,17 +239,25 @@ class MainWindow(QMainWindow):
 
         return panel
 
+    def auto_start_scan(self):
+        """Auto-start initial connection scan"""
+        self.show_notification("🔍 Scanning for devices", "Looking for routers, switches, and network devices...")
+        self.start_scan()
+
     def start_scan(self):
         """Start scanning for connections"""
         self.scan_button.setEnabled(False)
+        self.scan_button.setText("⏳ Scanning...")
         self.connection_list.clear()
-        self.update_status("Scanning for connections...")
+        self.progress_bar.setRange(0, 0)  # Indeterminate
+        self.update_status("🔍 Scanning for connections...")
 
         # Start scan worker
         self.scan_worker = ScanWorker()
         self.scan_worker.progress.connect(self.update_status)
         self.scan_worker.found_connection.connect(self.add_connection)
         self.scan_worker.scan_complete.connect(self.scan_finished)
+        self.scan_worker.error.connect(self.scan_error)
         self.scan_worker.start()
 
     def add_connection(self, connection):
@@ -264,23 +279,44 @@ class MainWindow(QMainWindow):
         """Handle scan completion"""
         self.connections = connections
         self.scan_button.setEnabled(True)
+        self.scan_button.setText("🔍 Scan for Connections")
+        self.progress_bar.setRange(0, 100)
+        self.progress_bar.setValue(100)
         self.connect_button.setEnabled(len(connections) > 0)
 
         if len(connections) == 0:
-            self.update_status(
-                "No connections found. Try checking USB/serial connections."
+            self.update_status("⚠️ No connections found")
+            self.show_notification(
+                "⚠️ No Devices Found",
+                "No routers or network devices detected. Check USB/serial connections.",
+                QMessageBox.Warning
             )
         else:
-            self.update_status(
-                f"Found {len(connections)} potential connections. Select one to connect."
+            self.update_status(f"✅ Found {len(connections)} device(s). Select one to connect.")
+            self.show_notification(
+                "✅ Devices Found",
+                f"Found {len(connections)} potential connection(s). Select one and enter credentials to connect."
             )
+
+    def scan_error(self, error_message):
+        """Handle scan errors"""
+        self.scan_button.setEnabled(True)
+        self.scan_button.setText("🔍 Scan for Connections")
+        self.progress_bar.setRange(0, 100)
+        self.progress_bar.setValue(0)
+        self.update_status(f"❌ Scan failed: {error_message}")
+        QMessageBox.critical(
+            self,
+            "❌ Scan Failed",
+            f"Connection scan failed:\n\n{error_message}\n\nPlease try again or check your network connection."
+        )
 
     def connect_to_device(self):
         """Connect to the selected device"""
         selected_items = self.connection_list.selectedItems()
         if not selected_items:
             QMessageBox.warning(
-                self, "Warning", "Please select a connection first."
+                self, "⚠️ No Selection", "Please select a connection from the list first."
             )
             return
 
@@ -289,30 +325,59 @@ class MainWindow(QMainWindow):
             return
 
         connection = self.connections[selected_index]
-        username = self.username_input.text()
+        username = self.username_input.text().strip()
         password = self.password_input.text()
 
         if not username or not password:
             QMessageBox.warning(
-                self, "Warning", "Please enter both username and password."
+                self, "⚠️ Missing Credentials", "Please enter both username and password to connect."
             )
             return
 
-        self.update_status("Connecting to device...")
-        self.log_console(f"Attempting connection to: {connection}")
+        # Show progress
+        self.connect_button.setEnabled(False)
+        self.connect_button.setText("⏳ Connecting...")
+        self.progress_bar.setRange(0, 0)
+        self.update_status("🔗 Connecting to device...")
+        self.log_console(f"🔗 Attempting connection to: {connection}")
 
-        # Extract target host for vulnerability scanning
-        if connection.get("type") == "network":
-            self.current_target_host = connection.get("ip")
-            self.vuln_scan_button.setEnabled(True)
-        else:
-            self.current_target_host = None
-            self.vuln_scan_button.setEnabled(False)
+        try:
+            # Extract target host for vulnerability scanning
+            if connection.get("type") == "network":
+                self.current_target_host = connection.get("ip")
+                self.vuln_scan_button.setEnabled(True)
+            else:
+                self.current_target_host = None
+                self.vuln_scan_button.setEnabled(False)
 
-        # TODO: Implement actual connection logic
-        self.current_connection = connection
-        self.scrape_button.setEnabled(True)
-        self.update_status("Connected successfully!")
+            # TODO: Implement actual connection logic
+            self.current_connection = connection
+            self.scrape_button.setEnabled(True)
+            
+            # Success
+            self.progress_bar.setRange(0, 100)
+            self.progress_bar.setValue(100)
+            self.connect_button.setEnabled(True)
+            self.connect_button.setText("🔗 Connect")
+            self.update_status("✅ Connected successfully!")
+            self.show_notification(
+                "✅ Connected",
+                f"Successfully connected to {connection.get('ip', 'device')}. You can now run security scans."
+            )
+            self.log_console("✅ Connection established")
+            
+        except Exception as e:
+            self.connect_button.setEnabled(True)
+            self.connect_button.setText("🔗 Connect")
+            self.progress_bar.setRange(0, 100)
+            self.progress_bar.setValue(0)
+            self.update_status(f"❌ Connection failed: {str(e)}")
+            QMessageBox.critical(
+                self,
+                "❌ Connection Failed",
+                f"Failed to connect to device:\n\n{str(e)}\n\nPlease check your credentials and try again."
+            )
+            logger.error(f"Connection failed: {e}")
 
     def start_scraping(self):
         """Start file system scraping"""
@@ -365,13 +430,20 @@ class MainWindow(QMainWindow):
         """Start vulnerability scanning"""
         if not self.current_target_host:
             QMessageBox.warning(
-                self, "Warning", "No target host available for scanning."
+                self, "⚠️ No Target", "No target host available for scanning. Please connect to a network device first."
             )
             return
 
         self.vuln_scan_button.setEnabled(False)
-        self.update_status(f"Starting vulnerability scan on {self.current_target_host}...")
+        self.vuln_scan_button.setText("⏳ Scanning...")
+        self.update_status(f"🔍 Starting vulnerability scan on {self.current_target_host}...")
         self.progress_bar.setRange(0, 0)  # Indeterminate progress
+        
+        # Show notification
+        self.show_notification(
+            "🔍 Vulnerability Scan Started",
+            f"Scanning {self.current_target_host} for security vulnerabilities. This may take several minutes..."
+        )
 
         # Start vulnerability scan worker
         self.vuln_worker = VulnerabilityScanWorker(self.current_target_host)
@@ -386,6 +458,7 @@ class MainWindow(QMainWindow):
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(100)
         self.vuln_scan_button.setEnabled(True)
+        self.vuln_scan_button.setText("🔍 Run Vulnerability Scan")
 
         # Build results display
         output = "═" * 80 + "\n"
@@ -464,15 +537,28 @@ class MainWindow(QMainWindow):
         # Display in security tab
         self.security_output.setText(output)
         self.results_tabs.setCurrentIndex(2)  # Switch to Security Analysis tab
-        self.update_status(f"Vulnerability scan complete! Found {len(vulnerabilities)} vulnerabilities.")
+        self.update_status(f"✅ Scan complete! Found {len(vulnerabilities)} vulnerabilities.")
         self.report_button.setEnabled(True)
+        
+        # Show completion notification
+        risk_emoji = "🔴" if risk_score >= 7.0 else "🟡" if risk_score >= 4.0 else "🟢"
+        self.show_notification(
+            f"{risk_emoji} Vulnerability Scan Complete",
+            f"Found {len(vulnerabilities)} vulnerabilities with risk score {risk_score:.1f}/10.0 ({risk_level})"
+        )
 
     def vulnerability_scan_error(self, error_message):
         """Handle vulnerability scan errors"""
         self.vuln_scan_button.setEnabled(True)
+        self.vuln_scan_button.setText("🔍 Run Vulnerability Scan")
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(0)
-        QMessageBox.critical(self, "Scan Error", f"Vulnerability scan failed:\n{error_message}")
+        self.update_status(f"❌ Vulnerability scan failed")
+        QMessageBox.critical(
+            self,
+            "❌ Vulnerability Scan Failed",
+            f"Vulnerability scan failed:\n\n{error_message}\n\nPlease check the network connection and try again."
+        )
 
     def _get_risk_level(self, score):
         """Convert risk score to risk level"""
@@ -486,3 +572,19 @@ class MainWindow(QMainWindow):
             return "LOW"
         else:
             return "MINIMAL"
+
+    def show_notification(self, title, message, icon=QMessageBox.Information):
+        """Show a non-blocking notification to the user"""
+        msg_box = QMessageBox(self)
+        msg_box.setIcon(icon)
+        msg_box.setWindowTitle(title)
+        msg_box.setText(message)
+        msg_box.setStandardButtons(QMessageBox.Ok)
+        
+        # Auto-close after 5 seconds for info messages
+        if icon == QMessageBox.Information:
+            QTimer.singleShot(5000, msg_box.close)
+        
+        msg_box.show()  # Non-blocking
+        msg_box.raise_()
+        msg_box.activateWindow()
