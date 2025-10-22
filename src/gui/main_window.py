@@ -22,6 +22,10 @@ from PyQt5.QtWidgets import (
     QMessageBox,
     QFileDialog,
     QInputDialog,
+    QTableWidget,
+    QTableWidgetItem,
+    QHeaderView,
+    QComboBox,
 )
 from PyQt5.QtCore import QThread, pyqtSignal, Qt, QTimer
 from PyQt5.QtGui import QFont, QColor, QPalette
@@ -255,6 +259,10 @@ class MainWindow(QMainWindow):
         self.security_output = QTextEdit()
         self.security_output.setReadOnly(True)
         self.results_tabs.addTab(self.security_output, "Security Analysis")
+        
+        # History Tab
+        history_tab = self.create_history_tab()
+        self.results_tabs.addTab(history_tab, "📜 History")
 
         layout.addWidget(self.results_tabs)
 
@@ -412,7 +420,7 @@ class MainWindow(QMainWindow):
         self.log_filesystem("/tmp - Temporary files")
         self.log_filesystem("/var/log - Log files")
 
-        self.report_button.setEnabled(True)
+        self.scrape_button.setEnabled(True)
         self.update_status("File system scan complete!")
 
     def generate_report(self):
@@ -785,6 +793,261 @@ class MainWindow(QMainWindow):
             logger.info(f"Saved scan to history database with ID: {scan_id}")
         except Exception as e:
             logger.error(f"Failed to save scan to history: {e}")
+    
+    def create_history_tab(self):
+        """Create the scan history viewer tab"""
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        
+        # Controls row
+        controls_layout = QHBoxLayout()
+        
+        # Target filter
+        controls_layout.addWidget(QLabel("Target:"))
+        self.history_target_filter = QComboBox()
+        self.history_target_filter.addItem("All Targets")
+        self.history_target_filter.currentTextChanged.connect(self.filter_history)
+        controls_layout.addWidget(self.history_target_filter)
+        
+        # Risk level filter
+        controls_layout.addWidget(QLabel("Risk Level:"))
+        self.history_risk_filter = QComboBox()
+        self.history_risk_filter.addItems(["All Levels", "CRITICAL", "HIGH", "MEDIUM", "LOW"])
+        self.history_risk_filter.currentTextChanged.connect(self.filter_history)
+        controls_layout.addWidget(self.history_risk_filter)
+        
+        controls_layout.addStretch()
+        
+        # Refresh button
+        refresh_btn = QPushButton("🔄 Refresh")
+        refresh_btn.clicked.connect(self.load_scan_history)
+        controls_layout.addWidget(refresh_btn)
+        
+        # Statistics button
+        stats_btn = QPushButton("📊 Statistics")
+        stats_btn.clicked.connect(self.show_history_statistics)
+        controls_layout.addWidget(stats_btn)
+        
+        layout.addLayout(controls_layout)
+        
+        # History table
+        self.history_table = QTableWidget()
+        self.history_table.setColumnCount(7)
+        self.history_table.setHorizontalHeaderLabels([
+            "ID", "Date/Time", "Target", "Device", "Risk Score", "Vulnerabilities", "Duration (s)"
+        ])
+        self.history_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
+        self.history_table.horizontalHeader().setStretchLastSection(True)
+        self.history_table.setSelectionBehavior(QTableWidget.SelectRows)
+        self.history_table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.history_table.doubleClicked.connect(self.view_historical_scan)
+        layout.addWidget(self.history_table)
+        
+        # Action buttons
+        history_actions = QHBoxLayout()
+        
+        view_btn = QPushButton("👁️ View Scan")
+        view_btn.clicked.connect(self.view_historical_scan)
+        history_actions.addWidget(view_btn)
+        
+        delete_btn = QPushButton("🗑️ Delete Scan")
+        delete_btn.clicked.connect(self.delete_historical_scan)
+        history_actions.addWidget(delete_btn)
+        
+        history_actions.addStretch()
+        
+        export_history_btn = QPushButton("💾 Export Selected")
+        export_history_btn.clicked.connect(self.export_historical_scan)
+        history_actions.addWidget(export_history_btn)
+        
+        layout.addLayout(history_actions)
+        
+        # Load initial history
+        QTimer.singleShot(1000, self.load_scan_history)
+        
+        return tab
+    
+    def load_scan_history(self):
+        """Load scan history from database"""
+        if not self.history_db:
+            return
+        
+        try:
+            # Get all scans
+            scans = self.history_db.get_all_scans(limit=100)
+            
+            # Update target filter
+            current_target = self.history_target_filter.currentText()
+            self.history_target_filter.clear()
+            self.history_target_filter.addItem("All Targets")
+            targets = self.history_db.get_unique_targets()
+            self.history_target_filter.addItems(targets)
+            self.history_target_filter.setCurrentText(current_target)
+            
+            # Store all scans
+            self.all_scans = scans
+            
+            # Apply filters
+            self.filter_history()
+            
+            logger.info(f"Loaded {len(scans)} scans from history")
+            
+        except Exception as e:
+            logger.error(f"Failed to load scan history: {e}")
+    
+    def filter_history(self):
+        """Filter history table based on selected criteria"""
+        if not hasattr(self, 'all_scans'):
+            return
+        
+        target_filter = self.history_target_filter.currentText()
+        risk_filter = self.history_risk_filter.currentText()
+        
+        # Filter scans
+        filtered_scans = self.all_scans
+        
+        if target_filter != "All Targets":
+            filtered_scans = [s for s in filtered_scans if s['target'] == target_filter]
+        
+        if risk_filter != "All Levels":
+            filtered_scans = [s for s in filtered_scans if s['risk_level'] == risk_filter]
+        
+        # Update table
+        self.history_table.setRowCount(len(filtered_scans))
+        
+        for row, scan in enumerate(filtered_scans):
+            # ID
+            self.history_table.setItem(row, 0, QTableWidgetItem(str(scan['id'])))
+            
+            # Date/Time
+            timestamp = scan['scan_timestamp'][:19].replace('T', ' ')
+            self.history_table.setItem(row, 1, QTableWidgetItem(timestamp))
+            
+            # Target
+            self.history_table.setItem(row, 2, QTableWidgetItem(scan['target']))
+            
+            # Device
+            device = f"{scan['device_vendor']} {scan['device_model']}"
+            self.history_table.setItem(row, 3, QTableWidgetItem(device))
+            
+            # Risk Score (with color)
+            risk_score = scan['risk_score']
+            risk_item = QTableWidgetItem(f"{risk_score:.1f}")
+            if risk_score >= 7.0:
+                risk_item.setBackground(QColor(255, 200, 200))  # Light red
+            elif risk_score >= 4.0:
+                risk_item.setBackground(QColor(255, 255, 200))  # Light yellow
+            else:
+                risk_item.setBackground(QColor(200, 255, 200))  # Light green
+            self.history_table.setItem(row, 4, risk_item)
+            
+            # Vulnerabilities
+            self.history_table.setItem(row, 5, QTableWidgetItem(str(scan['vulnerability_count'])))
+            
+            # Duration
+            duration = scan.get('scan_duration', 0.0)
+            self.history_table.setItem(row, 6, QTableWidgetItem(f"{duration:.1f}"))
+    
+    def view_historical_scan(self):
+        """View a historical scan result"""
+        selected_rows = self.history_table.selectedItems()
+        if not selected_rows:
+            QMessageBox.warning(self, "⚠️ No Selection", "Please select a scan to view.")
+            return
+        
+        # Get scan ID from first column
+        row = self.history_table.currentRow()
+        scan_id = int(self.history_table.item(row, 0).text())
+        
+        # Retrieve full scan results
+        scan_results = self.history_db.get_scan_by_id(scan_id)
+        
+        if scan_results:
+            # Display in security tab
+            self.display_vulnerability_results(scan_results)
+            self.results_tabs.setCurrentIndex(2)  # Switch to Security Analysis tab
+        else:
+            QMessageBox.warning(self, "⚠️ Not Found", f"Scan #{scan_id} not found in database.")
+    
+    def delete_historical_scan(self):
+        """Delete a historical scan"""
+        selected_rows = self.history_table.selectedItems()
+        if not selected_rows:
+            QMessageBox.warning(self, "⚠️ No Selection", "Please select a scan to delete.")
+            return
+        
+        row = self.history_table.currentRow()
+        scan_id = int(self.history_table.item(row, 0).text())
+        target = self.history_table.item(row, 2).text()
+        
+        # Confirm deletion
+        reply = QMessageBox.question(
+            self,
+            "🗑️ Confirm Deletion",
+            f"Are you sure you want to delete scan #{scan_id} for {target}?\n\nThis cannot be undone.",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+        
+        if reply == QMessageBox.Yes:
+            if self.history_db.delete_scan(scan_id):
+                self.load_scan_history()
+                self.update_status(f"✅ Deleted scan #{scan_id}")
+            else:
+                QMessageBox.critical(self, "❌ Delete Failed", f"Failed to delete scan #{scan_id}.")
+    
+    def export_historical_scan(self):
+        """Export a historical scan"""
+        selected_rows = self.history_table.selectedItems()
+        if not selected_rows:
+            QMessageBox.warning(self, "⚠️ No Selection", "Please select a scan to export.")
+            return
+        
+        row = self.history_table.currentRow()
+        scan_id = int(self.history_table.item(row, 0).text())
+        
+        # Load scan results
+        scan_results = self.history_db.get_scan_by_id(scan_id)
+        
+        if scan_results:
+            # Temporarily set as current scan for export
+            original_results = self.scan_results
+            self.scan_results = scan_results
+            self.export_report()
+            self.scan_results = original_results
+        else:
+            QMessageBox.warning(self, "⚠️ Not Found", f"Scan #{scan_id} not found.")
+    
+    def show_history_statistics(self):
+        """Show scan history statistics"""
+        if not self.history_db:
+            return
+        
+        stats = self.history_db.get_statistics()
+        
+        if not stats:
+            QMessageBox.information(self, "📊 Statistics", "No statistics available.")
+            return
+        
+        # Build statistics message
+        msg = "📊 SCAN HISTORY STATISTICS\n"
+        msg += "=" * 40 + "\n\n"
+        msg += f"Total Scans: {stats['total_scans']}\n"
+        msg += f"Unique Targets: {stats['unique_targets']}\n"
+        msg += f"Total Vulnerabilities: {stats['total_vulnerabilities']}\n"
+        msg += f"Average Risk Score: {stats['avg_risk_score']}/10.0\n\n"
+        
+        msg += "Risk Distribution:\n"
+        for level in ["CRITICAL", "HIGH", "MEDIUM", "LOW"]:
+            count = stats['risk_distribution'].get(level, 0)
+            if count > 0:
+                msg += f"  {level}: {count} scans\n"
+        
+        if stats.get('last_scan'):
+            last_scan = stats['last_scan'][:19].replace('T', ' ')
+            msg += f"\nLast Scan: {last_scan}"
+        
+        QMessageBox.information(self, "📊 Scan Statistics", msg)
     
     def closeEvent(self, event):
         """Handle window close event"""
