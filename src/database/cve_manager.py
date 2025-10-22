@@ -49,7 +49,7 @@ class CVEManager:
                     published_date TEXT,
                     last_modified TEXT,
                     cpe_matches TEXT,  -- JSON array of CPE matches
-                    references TEXT,   -- JSON array of references
+                    cve_references TEXT,   -- JSON array of references
                     cached_date TEXT,
                     raw_data TEXT      -- Full CVE JSON data
                 )
@@ -213,7 +213,7 @@ class CVEManager:
                     INSERT OR REPLACE INTO cve_vulnerabilities 
                     (cve_id, description, cvss_v3_score, cvss_v3_severity, 
                      cvss_v2_score, published_date, last_modified, 
-                     cpe_matches, references, cached_date, raw_data)
+                     cpe_matches, cve_references, cached_date, raw_data)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                     (
