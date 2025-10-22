@@ -7,7 +7,6 @@ import json
 import logging
 from datetime import datetime
 from typing import Dict
-import os
 
 logger = logging.getLogger(__name__)
 

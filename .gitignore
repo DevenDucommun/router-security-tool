@@ -68,6 +68,17 @@ router_security_tool.log
 *.tmp
 *.temp
 
+# Database files
+data/
+*.db
+*.sqlite
+*.sqlite3
+
+# Exported reports
+vulnerability_report_*.html
+vulnerability_report_*.pdf
+vulnerability_report_*.json
+
 # Credentials and sensitive data
 *.key
 *.pem
