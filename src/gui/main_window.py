@@ -28,12 +28,12 @@ from PyQt5.QtWidgets import (
     QComboBox,
 )
 from PyQt5.QtCore import QThread, pyqtSignal, Qt, QTimer
-from PyQt5.QtGui import QFont, QColor, QPalette
+from PyQt5.QtGui import QFont, QColor
 
 from connections.detector import ConnectionDetector
 from assessment.vulnerability_scanner import VulnerabilityScanner
 from reports.export import ReportExporter
-from utils.mock_data import MockDataGenerator, get_sample_scan
+from utils.mock_data import get_sample_scan
 from database.scan_history import ScanHistoryDB
 
 logger = logging.getLogger(__name__)
