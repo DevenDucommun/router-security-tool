@@ -4,12 +4,19 @@ A Python-based tool for connecting to and assessing the security of network devi
 
 ## Features
 
+### Core Functionality
 - **Connection Detection**: Auto-detect USB/serial ports and network interfaces
 - **Multiple Connection Types**: Support for serial/USB console and SSH connections
-- **File System Exploration**: Scrape and analyze Linux-based device file systems
-- **Security Assessment**: Preliminary security analysis and vulnerability detection
-- **Real-time GUI**: PyQt5-based interface with progress tracking
-- **Report Generation**: Detailed security assessment reports
+- **Vulnerability Scanning**: Comprehensive port scanning and service detection
+- **Security Assessment**: Advanced vulnerability analysis with CVE database integration
+- **Real-time GUI**: PyQt5-based interface with progress tracking and notifications
+
+### Phase 2 Features ✅
+- **Report Export**: Export scan results to JSON, HTML, and PDF formats
+- **Scan History**: SQLite database storing all historical scans
+- **History Viewer**: Interactive UI to view, filter, and compare past scans
+- **Demo Mode**: Test functionality with realistic mock data
+- **Statistics Dashboard**: Overview of scan history and trends
 
 ## Supported Devices
 
@@ -55,12 +62,15 @@ python main.py
 
 ### Basic Workflow
 
-1. **Scan for Connections**: Click "Scan for Connections" to detect available USB/serial ports and network interfaces
-2. **Select Connection**: Choose a connection from the detected list
-3. **Enter Credentials**: Provide username and password for the target device
-4. **Connect**: Establish connection to the device
-5. **Scan File System**: Start file system exploration and analysis
-6. **Generate Report**: Create a detailed security assessment report
+1. **Scan for Connections**: Click "Scan for Connections" to detect available network devices
+2. **Demo Mode** (optional): Click "Demo Mode" to test with mock data without real devices
+3. **Select Connection**: Choose a connection from the detected list
+4. **Enter Credentials**: Provide username and password for the target device (if connecting)
+5. **Connect**: Establish connection to the device
+6. **Run Vulnerability Scan**: Click "Run Vulnerability Scan" to analyze security
+7. **View Results**: See detailed vulnerability report with risk scores and recommendations
+8. **Export Report**: Export results to JSON, HTML, or PDF format
+9. **View History**: Check past scans in the History tab
 
 ### Connection Types
 
@@ -80,35 +90,49 @@ python main.py
 
 ```
 router-security-tool/
-├── main.py                 # Application entry point
-├── requirements.txt        # Python dependencies
+├── main.py                      # Application entry point
+├── requirements.txt             # Python dependencies
 ├── src/
-│   ├── connections/       # Connection management
-│   │   ├── detector.py    # Port/network detection
-│   │   └── manager.py     # Connection handling
-│   ├── gui/              # PyQt5 interface
-│   │   └── main_window.py # Main application window
-│   ├── scraper/          # File system exploration
-│   │   └── filesystem.py  # Directory scanning and analysis
-│   ├── auth/             # Authentication handling
-│   └── reports/          # Report generation
-├── tests/                # Unit tests
-└── docs/                 # Documentation
+│   ├── connections/            # Connection management
+│   │   ├── detector.py         # Port/network detection
+│   │   └── manager.py          # Connection handling
+│   ├── assessment/             # Security assessment
+│   │   ├── vulnerability_scanner.py  # Vulnerability scanning
+│   │   └── service_scanner.py  # Port and service detection
+│   ├── database/               # Data persistence
+│   │   ├── scan_history.py     # SQLite scan history
+│   │   └── cve_manager.py      # CVE database management
+│   ├── gui/                    # PyQt5 interface
+│   │   └── main_window.py      # Main application window
+│   ├── reports/                # Report generation
+│   │   └── export.py           # JSON/HTML/PDF export
+│   ├── utils/                  # Utilities
+│   │   └── mock_data.py        # Mock data generator
+│   └── scraper/                # File system exploration
+│       └── filesystem.py       # Directory scanning
+├── scripts/                    # Utility scripts
+│   └── populate_history.py     # Seed database with test data
+├── data/                       # Database files (gitignored)
+├── tests/                      # Unit tests
+└── docs/                       # Documentation
 ```
 
 ### Phase Development Plan
 
-#### Phase 1 (Current) ✅
+#### Phase 1 ✅
 - Connection detection and management
 - Basic GUI framework
 - File system scraping
 - Initial security checks
 
-#### Phase 2 (Next)
+#### Phase 2 ✅
 - Advanced security assessment engine
-- Vulnerability scanning
-- Configuration analysis
-- Enhanced reporting
+- Vulnerability scanning with service detection
+- CVE database integration
+- Export functionality (JSON/HTML/PDF)
+- Scan history database
+- History viewer UI
+- Demo mode for testing
 
 #### Phase 3 (Future)
 - Device-specific modules
