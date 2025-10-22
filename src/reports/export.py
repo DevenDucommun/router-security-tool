@@ -112,6 +112,17 @@ class ReportExporter:
 
             # Device Information
             device_info = scan_results.get('device_info', {})
+            
+            # Handle device_info being string (mock data) or dict (real data)
+            if isinstance(device_info, str):
+                device_info = {
+                    'vendor': scan_results.get('vendor', 'Unknown'),
+                    'product': scan_results.get('model', 'Unknown'),
+                    'version': scan_results.get('firmware_version', 'Unknown'),
+                    'device_type': 'Network Device',
+                    'confidence': 1.0
+                }
+            
             story.append(Paragraph("Device Information", heading_style))
             
             device_data = [
@@ -140,10 +151,10 @@ class ReportExporter:
             story.append(Paragraph(f"Vulnerabilities Found: {len(vulnerabilities)}", heading_style))
 
             if vulnerabilities:
-                # Group by severity
+                # Group by severity (normalize case)
                 by_severity = {'Critical': [], 'High': [], 'Medium': [], 'Low': []}
                 for vuln in vulnerabilities:
-                    severity = vuln.get('severity', 'Low')
+                    severity = vuln.get('severity', 'LOW').upper().capitalize()
                     if severity in by_severity:
                         by_severity[severity].append(vuln)
 
@@ -233,11 +244,21 @@ class ReportExporter:
         vulnerabilities = scan_results.get('vulnerabilities', [])
         recommendations = scan_results.get('recommendations', [])
         risk_score = scan_results.get('risk_score', 0)
+        
+        # Handle device_info being string (mock data) or dict (real data)
+        if isinstance(device_info, str):
+            device_info = {
+                'vendor': scan_results.get('vendor', 'Unknown'),
+                'product': scan_results.get('model', 'Unknown'),
+                'version': scan_results.get('firmware_version', 'Unknown'),
+                'device_type': 'Network Device',
+                'confidence': 1.0
+            }
 
-        # Group vulnerabilities by severity
+        # Group vulnerabilities by severity (normalize case)
         by_severity = {'Critical': [], 'High': [], 'Medium': [], 'Low': []}
         for vuln in vulnerabilities:
-            severity = vuln.get('severity', 'Low')
+            severity = vuln.get('severity', 'LOW').upper().capitalize()
             if severity in by_severity:
                 by_severity[severity].append(vuln)
 
