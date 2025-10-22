@@ -25,6 +25,7 @@ from PyQt5.QtCore import QThread, pyqtSignal, Qt
 from PyQt5.QtGui import QFont
 
 from connections.detector import ConnectionDetector
+from assessment.vulnerability_scanner import VulnerabilityScanner
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +59,34 @@ class ScanWorker(QThread):
             self.progress.emit(f"Scan failed: {str(e)}")
 
 
+class VulnerabilityScanWorker(QThread):
+    """Background worker for vulnerability scanning"""
+
+    progress = pyqtSignal(str)  # Status message
+    scan_complete = pyqtSignal(dict)  # Scan results
+    error = pyqtSignal(str)  # Error message
+
+    def __init__(self, target_host):
+        super().__init__()
+        self.target_host = target_host
+        self.scanner = VulnerabilityScanner()
+
+    def run(self):
+        """Run vulnerability scan in background"""
+        try:
+            self.progress.emit(f"Starting vulnerability scan on {self.target_host}...")
+            
+            self.progress.emit("Scanning open ports and services...")
+            results = self.scanner.scan_target(self.target_host)
+            
+            self.progress.emit(f"Scan complete. Found {len(results['vulnerabilities'])} vulnerabilities.")
+            self.scan_complete.emit(results)
+            
+        except Exception as e:
+            logger.error(f"Vulnerability scan failed: {e}")
+            self.error.emit(f"Scan failed: {str(e)}")
+
+
 class MainWindow(QMainWindow):
     """Main application window"""
 
@@ -65,6 +94,8 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.connections = []
         self.current_connection = None
+        self.current_target_host = None
+        self.scan_results = None
         self.init_ui()
 
     def init_ui(self):
@@ -137,6 +168,12 @@ class MainWindow(QMainWindow):
         # Actions Group
         actions_group = QGroupBox("Actions")
         actions_layout = QVBoxLayout(actions_group)
+
+        self.vuln_scan_button = QPushButton("🔍 Run Vulnerability Scan")
+        self.vuln_scan_button.clicked.connect(self.start_vulnerability_scan)
+        self.vuln_scan_button.setEnabled(False)
+        self.vuln_scan_button.setStyleSheet("QPushButton { font-weight: bold; padding: 8px; }")
+        actions_layout.addWidget(self.vuln_scan_button)
 
         self.scrape_button = QPushButton("Start File System Scan")
         self.scrape_button.clicked.connect(self.start_scraping)
@@ -264,7 +301,16 @@ class MainWindow(QMainWindow):
         self.update_status("Connecting to device...")
         self.log_console(f"Attempting connection to: {connection}")
 
+        # Extract target host for vulnerability scanning
+        if connection.get("type") == "network":
+            self.current_target_host = connection.get("ip")
+            self.vuln_scan_button.setEnabled(True)
+        else:
+            self.current_target_host = None
+            self.vuln_scan_button.setEnabled(False)
+
         # TODO: Implement actual connection logic
+        self.current_connection = connection
         self.scrape_button.setEnabled(True)
         self.update_status("Connected successfully!")
 
@@ -314,3 +360,129 @@ class MainWindow(QMainWindow):
     def log_filesystem(self, message):
         """Add message to filesystem output tab"""
         self.filesystem_output.append(message)
+
+    def start_vulnerability_scan(self):
+        """Start vulnerability scanning"""
+        if not self.current_target_host:
+            QMessageBox.warning(
+                self, "Warning", "No target host available for scanning."
+            )
+            return
+
+        self.vuln_scan_button.setEnabled(False)
+        self.update_status(f"Starting vulnerability scan on {self.current_target_host}...")
+        self.progress_bar.setRange(0, 0)  # Indeterminate progress
+
+        # Start vulnerability scan worker
+        self.vuln_worker = VulnerabilityScanWorker(self.current_target_host)
+        self.vuln_worker.progress.connect(self.update_status)
+        self.vuln_worker.scan_complete.connect(self.display_vulnerability_results)
+        self.vuln_worker.error.connect(self.vulnerability_scan_error)
+        self.vuln_worker.start()
+
+    def display_vulnerability_results(self, results):
+        """Display vulnerability scan results"""
+        self.scan_results = results
+        self.progress_bar.setRange(0, 100)
+        self.progress_bar.setValue(100)
+        self.vuln_scan_button.setEnabled(True)
+
+        # Build results display
+        output = "═" * 80 + "\n"
+        output += "VULNERABILITY SCAN RESULTS\n"
+        output += "═" * 80 + "\n\n"
+
+        # Device Information
+        device_info = results.get("device_info", {})
+        output += "📱 DEVICE INFORMATION\n"
+        output += "-" * 80 + "\n"
+        output += f"Target: {results.get('target', 'Unknown')}\n"
+        output += f"Vendor: {device_info.get('vendor', 'Unknown').upper()}\n"
+        output += f"Product: {device_info.get('product', 'Unknown')}\n"
+        output += f"Version: {device_info.get('version', 'Unknown')}\n"
+        output += f"Device Type: {device_info.get('device_type', 'Unknown')}\n"
+        output += f"Confidence: {device_info.get('confidence', 0):.1%}\n\n"
+
+        # Risk Score
+        risk_score = results.get("risk_score", 0)
+        risk_level = self._get_risk_level(risk_score)
+        output += f"⚠️  RISK SCORE: {risk_score:.1f}/10.0 ({risk_level})\n"
+        output += "-" * 80 + "\n\n"
+
+        # Services
+        services = results.get("services", {})
+        if services:
+            output += "🌐 DISCOVERED SERVICES\n"
+            output += "-" * 80 + "\n"
+            open_ports = services.get("open_ports", [])
+            output += f"Open Ports: {len(open_ports)}\n"
+            for port in sorted(open_ports)[:10]:  # Show first 10
+                service_name = services.get("services", {}).get(port, "Unknown")
+                output += f"  • Port {port}: {service_name}\n"
+            output += "\n"
+
+        # Vulnerabilities
+        vulnerabilities = results.get("vulnerabilities", [])
+        output += f"🔐 VULNERABILITIES FOUND: {len(vulnerabilities)}\n"
+        output += "=" * 80 + "\n\n"
+
+        if vulnerabilities:
+            # Group by severity
+            by_severity = {"Critical": [], "High": [], "Medium": [], "Low": []}
+            for vuln in vulnerabilities:
+                severity = vuln.get("severity", "Low")
+                if severity in by_severity:
+                    by_severity[severity].append(vuln)
+
+            for severity in ["Critical", "High", "Medium", "Low"]:
+                vulns = by_severity[severity]
+                if vulns:
+                    emoji = {"Critical": "🔴", "High": "🟠", "Medium": "🟡", "Low": "🟢"}
+                    output += f"\n{emoji[severity]} {severity.upper()} SEVERITY ({len(vulns)})\n"
+                    output += "-" * 80 + "\n"
+                    for vuln in vulns[:5]:  # Show first 5 per severity
+                        output += f"\n  ID: {vuln.get('id', 'Unknown')}\n"
+                        output += f"  Title: {vuln.get('title', 'No title')}\n"
+                        output += f"  CVSS Score: {vuln.get('cvss_score', 'N/A')}\n"
+                        output += f"  Component: {vuln.get('affected_component', 'Unknown')}\n"
+                        desc = vuln.get('description', 'No description')
+                        output += f"  Description: {desc[:150]}...\n" if len(desc) > 150 else f"  Description: {desc}\n"
+        else:
+            output += "✅ No vulnerabilities found!\n\n"
+
+        # Recommendations
+        recommendations = results.get("recommendations", [])
+        if recommendations:
+            output += "\n" + "=" * 80 + "\n"
+            output += "💡 SECURITY RECOMMENDATIONS\n"
+            output += "=" * 80 + "\n"
+            for i, rec in enumerate(recommendations[:5], 1):  # Top 5
+                output += f"\n{i}. {rec.get('recommendation', 'No recommendation')}\n"
+                output += f"   Priority: {rec.get('priority', 0)}/4\n"
+                output += f"   Affects: {', '.join(rec.get('affected_components', [])[:3])}\n"
+
+        # Display in security tab
+        self.security_output.setText(output)
+        self.results_tabs.setCurrentIndex(2)  # Switch to Security Analysis tab
+        self.update_status(f"Vulnerability scan complete! Found {len(vulnerabilities)} vulnerabilities.")
+        self.report_button.setEnabled(True)
+
+    def vulnerability_scan_error(self, error_message):
+        """Handle vulnerability scan errors"""
+        self.vuln_scan_button.setEnabled(True)
+        self.progress_bar.setRange(0, 100)
+        self.progress_bar.setValue(0)
+        QMessageBox.critical(self, "Scan Error", f"Vulnerability scan failed:\n{error_message}")
+
+    def _get_risk_level(self, score):
+        """Convert risk score to risk level"""
+        if score >= 9.0:
+            return "CRITICAL"
+        elif score >= 7.0:
+            return "HIGH"
+        elif score >= 4.0:
+            return "MEDIUM"
+        elif score > 0:
+            return "LOW"
+        else:
+            return "MINIMAL"
