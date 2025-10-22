@@ -20,12 +20,17 @@ from PyQt5.QtWidgets import (
     QListWidget,
     QSplitter,
     QMessageBox,
+    QFileDialog,
+    QInputDialog,
 )
 from PyQt5.QtCore import QThread, pyqtSignal, Qt, QTimer
 from PyQt5.QtGui import QFont, QColor, QPalette
 
 from connections.detector import ConnectionDetector
 from assessment.vulnerability_scanner import VulnerabilityScanner
+from reports.export import ReportExporter
+from utils.mock_data import MockDataGenerator, get_sample_scan
+from database.scan_history import ScanHistoryDB
 
 logger = logging.getLogger(__name__)
 
@@ -97,6 +102,15 @@ class MainWindow(QMainWindow):
         self.current_connection = None
         self.current_target_host = None
         self.scan_results = None
+        
+        # Initialize scan history database
+        try:
+            self.history_db = ScanHistoryDB()
+            logger.info("Scan history database initialized")
+        except Exception as e:
+            logger.error(f"Failed to initialize scan history database: {e}")
+            self.history_db = None
+        
         self.init_ui()
         
         # Auto-start initial scan after UI is ready
@@ -144,6 +158,12 @@ class MainWindow(QMainWindow):
         self.scan_button.clicked.connect(self.start_scan)
         self.scan_button.setToolTip("Scan for available routers, switches, and network devices")
         detection_layout.addWidget(self.scan_button)
+        
+        self.demo_button = QPushButton("🎭 Demo Mode")
+        self.demo_button.clicked.connect(self.load_demo_data)
+        self.demo_button.setToolTip("Load mock data for testing without real devices")
+        self.demo_button.setStyleSheet("QPushButton { background-color: #3498db; color: white; font-weight: bold; }")
+        detection_layout.addWidget(self.demo_button)
 
         self.connection_list = QListWidget()
         detection_layout.addWidget(self.connection_list)
@@ -185,10 +205,11 @@ class MainWindow(QMainWindow):
         self.scrape_button.setEnabled(False)
         actions_layout.addWidget(self.scrape_button)
 
-        self.report_button = QPushButton("Generate Report")
-        self.report_button.clicked.connect(self.generate_report)
-        self.report_button.setEnabled(False)
-        actions_layout.addWidget(self.report_button)
+        self.export_button = QPushButton("💾 Export Report")
+        self.export_button.clicked.connect(self.export_report)
+        self.export_button.setEnabled(False)
+        self.export_button.setToolTip("Export scan results to JSON, HTML, or PDF")
+        actions_layout.addWidget(self.export_button)
 
         layout.addWidget(actions_group)
         layout.addStretch()
@@ -465,16 +486,25 @@ class MainWindow(QMainWindow):
         output += "VULNERABILITY SCAN RESULTS\n"
         output += "═" * 80 + "\n\n"
 
-        # Device Information
+        # Device Information (handle both real and mock data formats)
         device_info = results.get("device_info", {})
         output += "📱 DEVICE INFORMATION\n"
         output += "-" * 80 + "\n"
         output += f"Target: {results.get('target', 'Unknown')}\n"
-        output += f"Vendor: {device_info.get('vendor', 'Unknown').upper()}\n"
-        output += f"Product: {device_info.get('product', 'Unknown')}\n"
-        output += f"Version: {device_info.get('version', 'Unknown')}\n"
-        output += f"Device Type: {device_info.get('device_type', 'Unknown')}\n"
-        output += f"Confidence: {device_info.get('confidence', 0):.1%}\n\n"
+        
+        # Check if device_info is a string (mock data) or dict (real data)
+        if isinstance(device_info, str):
+            output += f"Device: {device_info}\n"
+            output += f"Vendor: {results.get('vendor', 'Unknown')}\n"
+            output += f"Model: {results.get('model', 'Unknown')}\n"
+            output += f"Firmware: {results.get('firmware_version', 'Unknown')}\n"
+        else:
+            output += f"Vendor: {device_info.get('vendor', 'Unknown').upper()}\n"
+            output += f"Product: {device_info.get('product', 'Unknown')}\n"
+            output += f"Version: {device_info.get('version', 'Unknown')}\n"
+            output += f"Device Type: {device_info.get('device_type', 'Unknown')}\n"
+            output += f"Confidence: {device_info.get('confidence', 0):.1%}\n"
+        output += "\n"
 
         # Risk Score
         risk_score = results.get("risk_score", 0)
@@ -500,26 +530,29 @@ class MainWindow(QMainWindow):
         output += "=" * 80 + "\n\n"
 
         if vulnerabilities:
-            # Group by severity
-            by_severity = {"Critical": [], "High": [], "Medium": [], "Low": []}
+            # Group by severity (normalize case for both formats)
+            by_severity = {"CRITICAL": [], "HIGH": [], "MEDIUM": [], "LOW": []}
             for vuln in vulnerabilities:
-                severity = vuln.get("severity", "Low")
+                severity = vuln.get("severity", "LOW").upper()
                 if severity in by_severity:
                     by_severity[severity].append(vuln)
 
-            for severity in ["Critical", "High", "Medium", "Low"]:
+            for severity in ["CRITICAL", "HIGH", "MEDIUM", "LOW"]:
                 vulns = by_severity[severity]
                 if vulns:
-                    emoji = {"Critical": "🔴", "High": "🟠", "Medium": "🟡", "Low": "🟢"}
-                    output += f"\n{emoji[severity]} {severity.upper()} SEVERITY ({len(vulns)})\n"
+                    emoji = {"CRITICAL": "🔴", "HIGH": "🟠", "MEDIUM": "🟡", "LOW": "🟢"}
+                    output += f"\n{emoji[severity]} {severity} SEVERITY ({len(vulns)})\n"
                     output += "-" * 80 + "\n"
                     for vuln in vulns[:5]:  # Show first 5 per severity
-                        output += f"\n  ID: {vuln.get('id', 'Unknown')}\n"
-                        output += f"  Title: {vuln.get('title', 'No title')}\n"
+                        output += f"\n  Title: {vuln.get('title', 'No title')}\n"
+                        if vuln.get('cve_id'):
+                            output += f"  CVE ID: {vuln.get('cve_id')}\n"
                         output += f"  CVSS Score: {vuln.get('cvss_score', 'N/A')}\n"
-                        output += f"  Component: {vuln.get('affected_component', 'Unknown')}\n"
                         desc = vuln.get('description', 'No description')
-                        output += f"  Description: {desc[:150]}...\n" if len(desc) > 150 else f"  Description: {desc}\n"
+                        output += f"  Description: {desc[:200]}...\n" if len(desc) > 200 else f"  Description: {desc}\n"
+                        if vuln.get('remediation'):
+                            rem = vuln.get('remediation', '')
+                            output += f"  Remediation: {rem[:150]}...\n" if len(rem) > 150 else f"  Remediation: {rem}\n"
         else:
             output += "✅ No vulnerabilities found!\n\n"
 
@@ -529,16 +562,26 @@ class MainWindow(QMainWindow):
             output += "\n" + "=" * 80 + "\n"
             output += "💡 SECURITY RECOMMENDATIONS\n"
             output += "=" * 80 + "\n"
-            for i, rec in enumerate(recommendations[:5], 1):  # Top 5
+            for i, rec in enumerate(recommendations[:10], 1):  # Top 10
                 output += f"\n{i}. {rec.get('recommendation', 'No recommendation')}\n"
-                output += f"   Priority: {rec.get('priority', 0)}/4\n"
-                output += f"   Affects: {', '.join(rec.get('affected_components', [])[:3])}\n"
+                # Handle both priority formats (string or int)
+                priority = rec.get('priority', 'LOW')
+                if isinstance(priority, str):
+                    output += f"   Priority: {priority}\n"
+                else:
+                    output += f"   Priority: {priority}/4\n"
+                # Only show affected_components if present
+                if rec.get('affected_components'):
+                    output += f"   Affects: {', '.join(rec.get('affected_components', [])[:3])}\n"
 
         # Display in security tab
         self.security_output.setText(output)
         self.results_tabs.setCurrentIndex(2)  # Switch to Security Analysis tab
         self.update_status(f"✅ Scan complete! Found {len(vulnerabilities)} vulnerabilities.")
-        self.report_button.setEnabled(True)
+        self.export_button.setEnabled(True)
+        
+        # Save scan to history database
+        self.save_scan_to_history(results)
         
         # Show completion notification
         risk_emoji = "🔴" if risk_score >= 7.0 else "🟡" if risk_score >= 4.0 else "🟢"
@@ -588,3 +631,164 @@ class MainWindow(QMainWindow):
         msg_box.show()  # Non-blocking
         msg_box.raise_()
         msg_box.activateWindow()
+
+    def export_report(self):
+        """Export scan results to file"""
+        if not self.scan_results:
+            QMessageBox.warning(
+                self,
+                "⚠️ No Results",
+                "No scan results available to export. Please run a vulnerability scan first."
+            )
+            return
+
+        # Ask user to select format
+        formats = ["JSON", "HTML", "PDF"]
+        format_choice, ok = QInputDialog.getItem(
+            self,
+            "💾 Export Format",
+            "Select export format:",
+            formats,
+            0,
+            False
+        )
+        
+        if not ok:
+            return
+
+        # Get save location
+        target = self.scan_results.get('target', 'scan')
+        timestamp = QTimer.singleShot.__self__.__class__.__name__  # Placeholder
+        default_filename = f"vulnerability_report_{target}"
+        
+        if format_choice == "JSON":
+            file_path, _ = QFileDialog.getSaveFileName(
+                self,
+                "Save Report as JSON",
+                f"{default_filename}.json",
+                "JSON Files (*.json)"
+            )
+        elif format_choice == "HTML":
+            file_path, _ = QFileDialog.getSaveFileName(
+                self,
+                "Save Report as HTML",
+                f"{default_filename}.html",
+                "HTML Files (*.html)"
+            )
+        else:  # PDF
+            file_path, _ = QFileDialog.getSaveFileName(
+                self,
+                "Save Report as PDF",
+                f"{default_filename}.pdf",
+                "PDF Files (*.pdf)"
+            )
+        
+        if not file_path:
+            return
+
+        # Export the report
+        self.export_button.setEnabled(False)
+        self.export_button.setText("⏳ Exporting...")
+        self.update_status(f"💾 Exporting report to {format_choice}...")
+        
+        try:
+            exporter = ReportExporter()
+            success = False
+            
+            if format_choice == "JSON":
+                success = exporter.export_to_json(self.scan_results, file_path)
+            elif format_choice == "HTML":
+                success = exporter.export_to_html(self.scan_results, file_path)
+            else:  # PDF
+                success = exporter.export_to_pdf(self.scan_results, file_path)
+            
+            self.export_button.setEnabled(True)
+            self.export_button.setText("💾 Export Report")
+            
+            if success:
+                self.update_status(f"✅ Report exported successfully to {file_path}")
+                self.show_notification(
+                    "✅ Export Successful",
+                    f"Report exported to:\n{file_path}"
+                )
+            else:
+                self.update_status(f"❌ Export failed")
+                QMessageBox.critical(
+                    self,
+                    "❌ Export Failed",
+                    f"Failed to export report to {format_choice} format.\n\nCheck the logs for details."
+                )
+                
+        except Exception as e:
+            self.export_button.setEnabled(True)
+            self.export_button.setText("💾 Export Report")
+            self.update_status(f"❌ Export error: {str(e)}")
+            QMessageBox.critical(
+                self,
+                "❌ Export Error",
+                f"An error occurred during export:\n\n{str(e)}"
+            )
+            logger.error(f"Export error: {e}")
+    
+    def load_demo_data(self):
+        """Load mock scan data for testing"""
+        self.update_status("🎭 Loading demo data...")
+        
+        try:
+            # Generate mock scan result
+            mock_scan = get_sample_scan()
+            
+            # Populate connection list with demo device
+            self.connection_list.clear()
+            self.connection_list.addItem(
+                f"[DEMO] {mock_scan['device_info']} - {mock_scan['target']}"
+            )
+            
+            # Set current target
+            self.current_target_host = mock_scan['target']
+            
+            # Display results immediately
+            self.display_vulnerability_results(mock_scan)
+            
+            # Enable action buttons
+            self.vuln_scan_button.setEnabled(True)
+            self.vuln_scan_button.setText("🔄 Generate New Demo Scan")
+            self.export_button.setEnabled(True)
+            
+            self.update_status("✅ Demo data loaded successfully!")
+            self.show_notification(
+                "🎭 Demo Mode Active",
+                f"Loaded mock scan for {mock_scan['device_info']}\n"
+                f"Risk Score: {mock_scan['risk_score']}/10.0 ({mock_scan['risk_level']})\n"
+                f"Vulnerabilities: {mock_scan['vulnerability_count']}"
+            )
+            
+            logger.info("Demo mode activated with mock data")
+            
+        except Exception as e:
+            logger.error(f"Failed to load demo data: {e}")
+            QMessageBox.critical(
+                self,
+                "❌ Demo Mode Error",
+                f"Failed to load demo data:\n\n{str(e)}"
+            )
+            self.update_status("❌ Demo mode failed")
+    
+    def save_scan_to_history(self, results):
+        """Save scan results to history database"""
+        if not self.history_db:
+            logger.warning("History database not available, skipping save")
+            return
+        
+        try:
+            scan_id = self.history_db.save_scan(results)
+            logger.info(f"Saved scan to history database with ID: {scan_id}")
+        except Exception as e:
+            logger.error(f"Failed to save scan to history: {e}")
+    
+    def closeEvent(self, event):
+        """Handle window close event"""
+        # Close database connection
+        if self.history_db:
+            self.history_db.close()
+        event.accept()
