@@ -370,43 +370,34 @@ class MainWindow(QMainWindow):
         self.update_status("🔗 Connecting to device...")
         self.log_console(f"🔗 Attempting connection to: {connection}")
 
-        try:
-            # Extract target host for vulnerability scanning
-            if connection.get("type") == "network":
-                self.current_target_host = connection.get("ip")
-                self.vuln_scan_button.setEnabled(True)
-            else:
-                self.current_target_host = None
-                self.vuln_scan_button.setEnabled(False)
+        # Extract target host for vulnerability scanning
+        if connection.get("type") == "network":
+            self.current_target_host = connection.get("ip")
+            self.vuln_scan_button.setEnabled(True)
+        else:
+            self.current_target_host = None
+            self.vuln_scan_button.setEnabled(False)
 
-            # TODO: Implement actual connection logic
-            self.current_connection = connection
-            self.scrape_button.setEnabled(True)
-            
-            # Success
-            self.progress_bar.setRange(0, 100)
-            self.progress_bar.setValue(100)
-            self.connect_button.setEnabled(True)
-            self.connect_button.setText("🔗 Connect")
-            self.update_status("✅ Connected successfully!")
-            self.show_notification(
-                "✅ Connected",
-                f"Successfully connected to {connection.get('ip', 'device')}. You can now run security scans."
-            )
-            self.log_console("✅ Connection established")
-            
-        except Exception as e:
-            self.connect_button.setEnabled(True)
-            self.connect_button.setText("🔗 Connect")
-            self.progress_bar.setRange(0, 100)
-            self.progress_bar.setValue(0)
-            self.update_status(f"❌ Connection failed: {str(e)}")
-            QMessageBox.critical(
-                self,
-                "❌ Connection Failed",
-                f"Failed to connect to device:\n\n{str(e)}\n\nPlease check your credentials and try again."
-            )
-            logger.error(f"Connection failed: {e}")
+        self.current_connection = connection
+        self.connection_info = {
+            "host": connection.get("ip"),
+            "username": username,
+            "type": connection.get("type"),
+        }
+
+        # Network targets can be scanned without an interactive session
+        self.scrape_button.setEnabled(connection.get("type") == "network")
+
+        self.progress_bar.setRange(0, 100)
+        self.progress_bar.setValue(100)
+        self.connect_button.setEnabled(True)
+        self.connect_button.setText("🔗 Connect")
+        self.update_status(f"✅ Target set: {connection.get('ip', 'device')}")
+        self.show_notification(
+            "✅ Target Selected",
+            f"Target {connection.get('ip', 'device')} ready for vulnerability scanning."
+        )
+        self.log_console(f"✅ Target selected: {connection.get('ip', 'device')}")
 
     def start_scraping(self):
         """Start file system scraping"""
@@ -424,22 +415,33 @@ class MainWindow(QMainWindow):
         self.update_status("File system scan complete!")
 
     def generate_report(self):
-        """Generate security assessment report"""
+        """Generate security assessment report from last scan results"""
+        if not hasattr(self, "last_scan_results") or not self.last_scan_results:
+            QMessageBox.warning(
+                self, "No Data", "Run a vulnerability scan first before generating a report."
+            )
+            return
+
         self.update_status("Generating report...")
 
-        # TODO: Implement report generation
-        report = "Security Assessment Report\\n"
-        report += "========================\\n\\n"
-        report += "Connection Type: Serial/USB\\n"
-        report += "Device Info: Unknown\\n"
-        report += "Scan Date: Now\\n\\n"
-        report += "Findings:\\n"
-        report += "- File system accessible\\n"
-        report += "- Configuration files readable\\n"
+        file_path, _ = QFileDialog.getSaveFileName(
+            self, "Save Report", "", "HTML Files (*.html);;JSON Files (*.json);;PDF Files (*.pdf)"
+        )
+        if not file_path:
+            return
 
-        self.security_output.setText(report)
-        self.results_tabs.setCurrentIndex(2)  # Switch to Security tab
-        self.update_status("Report generated successfully!")
+        try:
+            exporter = ReportExporter()
+            if file_path.endswith(".json"):
+                exporter.export_json(self.last_scan_results, file_path)
+            elif file_path.endswith(".pdf"):
+                exporter.export_pdf(self.last_scan_results, file_path)
+            else:
+                exporter.export_html(self.last_scan_results, file_path)
+            self.update_status(f"Report saved: {file_path}")
+        except Exception as e:
+            logger.error(f"Report generation failed: {e}")
+            QMessageBox.critical(self, "Export Failed", f"Could not generate report:\n{e}")
 
     def update_status(self, message):
         """Update the status label and status bar"""

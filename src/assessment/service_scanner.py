@@ -3,6 +3,7 @@ Service Enumeration Module
 Network port scanning and service identification capabilities
 """
 
+import ipaddress
 import logging
 import socket
 import time
@@ -159,20 +160,20 @@ class ServiceScanner:
                 # Send appropriate probe based on port
                 if port in [80, 8080]:
                     sock.send(
-                        b"GET / HTTP/1.1\\r\\nHost: "
+                        b"GET / HTTP/1.1\r\nHost: "
                         + host.encode()
-                        + b"\\r\\n\\r\\n"
+                        + b"\r\n\r\n"
                     )
                 elif port == 21:
                     pass  # FTP sends banner automatically
                 elif port == 22:
                     pass  # SSH sends banner automatically
                 elif port == 23:
-                    sock.send(b"\\r\\n")
+                    sock.send(b"\r\n")
                 elif port == 25:
-                    sock.send(b"EHLO test\\r\\n")
+                    sock.send(b"EHLO test\r\n")
                 else:
-                    sock.send(b"\\r\\n")
+                    sock.send(b"\r\n")
 
                 # Read response
                 banner = (
@@ -231,7 +232,7 @@ class ServiceScanner:
             if title:
                 service_detail += f" ({title})"
 
-            banner = f"Server: {server}\\nTitle: {title}"
+            banner = f"Server: {server}\nTitle: {title}"
             return banner, service_detail
 
         except Exception as e:
@@ -257,9 +258,9 @@ class ServiceScanner:
             subject = dict(x[0] for x in cert["subject"])
             issuer = dict(x[0] for x in cert["issuer"])
 
-            banner = f"SSL Certificate:\\n"
-            banner += f"Subject: {subject.get('commonName', 'Unknown')}\\n"
-            banner += f"Issuer: {issuer.get('organizationName', 'Unknown')}\\n"
+            banner = f"SSL Certificate:\n"
+            banner += f"Subject: {subject.get('commonName', 'Unknown')}\n"
+            banner += f"Issuer: {issuer.get('organizationName', 'Unknown')}\n"
             banner += f"Cipher: {cipher[0] if cipher else 'Unknown'}"
 
             service_detail = (
@@ -296,7 +297,7 @@ class ServiceScanner:
 
             # Parse SSH version
             if banner.startswith("SSH-"):
-                version_match = re.search(r"SSH-([\\d\\.]+)", banner)
+                version_match = re.search(r"SSH-([\d.]+)", banner)
                 version = (
                     version_match.group(1) if version_match else "Unknown"
                 )
@@ -341,7 +342,7 @@ class ServiceScanner:
                     )
 
                     if result.returncode == 0 and result.stdout:
-                        banner = f"SNMP Community: {community}\\n{result.stdout.strip()}"
+                        banner = f"SNMP Community: {community}\n{result.stdout.strip()}"
                         service_detail = f"SNMP v2c (Community: {community})"
                         return banner, service_detail
 
@@ -367,7 +368,7 @@ class ServiceScanner:
                 sock.connect((host, port))
 
                 # Send initial data and read response
-                sock.send(b"\\r\\n")
+                sock.send(b"\r\n")
                 time.sleep(0.5)
                 banner = (
                     sock.recv(1024).decode("utf-8", errors="ignore").strip()
@@ -469,15 +470,50 @@ class ServiceScanner:
         return analysis
 
     def scan_network_range(
-        self, network_range: str, ports: List[int] = None
+        self, network_range: str, ports: List[int] = None, max_threads: int = 20
     ) -> List[Dict]:
-        """Scan multiple hosts in a network range"""
-        # This would implement network range scanning
-        # For now, just return empty list as it requires more complex networking
-        logger.info(
-            f"Network range scanning not yet implemented for: {network_range}"
-        )
-        return []
+        """Scan multiple hosts in a network range for open ports"""
+        logger.info(f"Scanning network range: {network_range}")
+
+        try:
+            network = ipaddress.ip_network(network_range, strict=False)
+        except ValueError as e:
+            logger.error(f"Invalid network range: {e}")
+            return []
+
+        hosts = [str(ip) for ip in network.hosts()]
+        if not hosts:
+            return []
+
+        alive_hosts = []
+
+        def check_host(host: str) -> Optional[Dict]:
+            try:
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                sock.settimeout(0.5)
+                result = sock.connect_ex((host, 80))
+                sock.close()
+                if result == 0:
+                    return {"host": host, "reachable": True}
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                sock.settimeout(0.5)
+                result = sock.connect_ex((host, 22))
+                sock.close()
+                if result == 0:
+                    return {"host": host, "reachable": True}
+            except (socket.error, OSError):
+                pass
+            return None
+
+        with ThreadPoolExecutor(max_workers=max_threads) as executor:
+            futures = {executor.submit(check_host, h): h for h in hosts}
+            for future in as_completed(futures):
+                result = future.result()
+                if result:
+                    alive_hosts.append(result)
+
+        logger.info(f"Found {len(alive_hosts)} reachable hosts in {network_range}")
+        return alive_hosts
 
     def get_service_vulnerabilities(
         self, service: str, version: str = None
