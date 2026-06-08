@@ -5,7 +5,7 @@ Unit tests for Connection Detector module
 import pytest
 import subprocess
 from unittest.mock import patch, MagicMock
-from src.connections.detector import ConnectionDetector
+from connections.detector import ConnectionDetector
 
 
 @pytest.fixture
@@ -68,7 +68,7 @@ class TestUSBDetection:
 class TestNetworkRangeScan:
     """Tests for network range scanning"""
 
-    @patch("src.connections.detector.ConnectionDetector._test_tcp_connection")
+    @patch("connections.detector.ConnectionDetector._test_tcp_connection")
     def test_scan_network_range_common_ips(self, mock_test, detector):
         mock_test.side_effect = [True, False, False, False, False, False, False, False, False, False, False, False]
 
@@ -77,7 +77,7 @@ class TestNetworkRangeScan:
         assert any(t["service"] == "ssh" for t in targets)
         assert all(t["type"] == "network" for t in targets)
 
-    @patch("src.connections.detector.ConnectionDetector._test_tcp_connection")
+    @patch("connections.detector.ConnectionDetector._test_tcp_connection")
     def test_scan_network_range_no_targets(self, mock_test, detector):
         mock_test.return_value = False
 

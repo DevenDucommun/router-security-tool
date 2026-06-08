@@ -69,11 +69,11 @@ class TestMockDataGenerator:
     
     def test_diverse_scans_variety(self):
         """Test diverse scans have different risk levels"""
-        scans = MockDataGenerator.generate_diverse_scans(count=4)
-        
-        assert len(scans) == 4
+        scans = MockDataGenerator.generate_diverse_scans(count=10)
+
+        assert len(scans) == 10
         risk_levels = set(s['risk_level'] for s in scans)
-        # Should have variety
+        # With 10 samples, should have at least 2 distinct risk levels
         assert len(risk_levels) >= 2
 
 

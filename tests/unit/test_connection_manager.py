@@ -4,7 +4,7 @@ Unit tests for Connection Manager module
 
 import pytest
 from unittest.mock import patch, MagicMock, Mock
-from src.connections.manager import ConnectionManager
+from connections.manager import ConnectionManager
 import serial
 import paramiko
 import socket

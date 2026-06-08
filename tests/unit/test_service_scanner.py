@@ -5,7 +5,7 @@ Unit tests for Service Scanner module
 import pytest
 import socket
 from unittest.mock import Mock, patch, MagicMock
-from src.assessment.service_scanner import ServiceScanner
+from assessment.service_scanner import ServiceScanner
 
 
 @pytest.fixture
@@ -259,8 +259,8 @@ class TestProtocolAnalysis:
 class TestFullHostScan:
     """Test full host scanning"""
 
-    @patch("src.assessment.service_scanner.ServiceScanner._scan_port")
-    @patch("src.assessment.service_scanner.ServiceScanner._identify_service")
+    @patch("assessment.service_scanner.ServiceScanner._scan_port")
+    @patch("assessment.service_scanner.ServiceScanner._identify_service")
     def test_scan_host_with_open_ports(
         self, mock_identify, mock_scan_port, service_scanner
     ):
@@ -281,7 +281,7 @@ class TestFullHostScan:
         assert "services" in results
         assert "banners" in results
 
-    @patch("src.assessment.service_scanner.ServiceScanner._scan_port")
+    @patch("assessment.service_scanner.ServiceScanner._scan_port")
     def test_scan_host_no_ports_specified(
         self, mock_scan_port, service_scanner
     ):
@@ -296,7 +296,7 @@ class TestFullHostScan:
             service_scanner.common_ports
         )
 
-    @patch("src.assessment.service_scanner.ServiceScanner._scan_port")
+    @patch("assessment.service_scanner.ServiceScanner._scan_port")
     def test_scan_host_handles_exceptions(
         self, mock_scan_port, service_scanner
     ):

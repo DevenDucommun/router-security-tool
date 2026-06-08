@@ -48,15 +48,14 @@ dev = [
 ]
 
 [project.scripts]
-router-security-tool = "main:main"
+router-security-tool = "cli:main"
 
 [project.urls]
 Repository = "https://github.com/DevenDucommun/router-security-tool"
 Issues = "https://github.com/DevenDucommun/router-security-tool/issues"
 
 [tool.setuptools.packages.find]
-where = ["."]
-include = ["src*"]
+where = ["src"]
 
 [tool.black]
 line-length = 88
