@@ -252,6 +252,7 @@ class FileSystemScraper:
 
     def check_default_configurations(self):
         """Check for default configuration files that might contain default passwords"""
+        # nosec: detection patterns for identifying default credentials on target devices
         default_indicators = [
             "admin/admin",
             "root/root",
@@ -259,7 +260,7 @@ class FileSystemScraper:
             "user/user",
             "guest/guest",
             "default_password",
-            "changeme",
+            "changeme",  # nosec B105
         ]
 
         # Check interesting configuration files

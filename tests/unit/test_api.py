@@ -53,7 +53,7 @@ class TestScanEndpoint:
         response = client.post("/api/scan", json={
             "host": "192.168.1.1",
             "username": "root",
-            "password": "testpass",
+            "password": "test-placeholder-not-real",
         })
 
         assert response.status_code == 200
@@ -82,7 +82,7 @@ class TestScanEndpoint:
         response = client.post("/api/scan", json={
             "host": "10.0.0.1",
             "username": "root",
-            "password": "badpass",
+            "password": "placeholder-invalid",
         })
 
         assert response.status_code == 502
@@ -109,7 +109,7 @@ class TestScanEndpoint:
             "profile": "generic",
         }
 
-        with patch.dict("os.environ", {"ROUTER_PASS": "envpass"}):
+        with patch.dict("os.environ", {"ROUTER_PASS": "env-placeholder-not-real"}):
             response = client.post("/api/scan", json={
                 "host": "192.168.1.1",
                 "username": "root",
@@ -117,7 +117,7 @@ class TestScanEndpoint:
 
         assert response.status_code == 200
         mock_assess.assert_called_once_with(
-            "192.168.1.1", 22, "root", "envpass"
+            "192.168.1.1", 22, "root", "env-placeholder-not-real"
         )
 
     @patch("api.routes.scan._run_ssh_assessment")

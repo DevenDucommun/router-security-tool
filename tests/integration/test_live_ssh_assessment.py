@@ -17,7 +17,7 @@ from assessment.ssh_assessor import SSHAssessor
 
 ROUTER_HOST = "192.168.1.1"
 ROUTER_USER = "root"
-ROUTER_PASS = os.environ.get("ROUTER_PASS", "changeme")
+ROUTER_PASS = os.environ.get("ROUTER_PASS", "")
 
 
 @pytest.fixture(scope="module")
