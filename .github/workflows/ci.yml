@@ -34,5 +34,3 @@ jobs:
       - name: Run tests
         run: |
           pytest tests/ -v --tb=short -m "not network"
-        env:
-          QT_QPA_PLATFORM: offscreen

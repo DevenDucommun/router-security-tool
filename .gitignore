@@ -87,8 +87,9 @@ vulnerability_report_*.json
 credentials.txt
 secrets.yml
 
-# pyqt ui files
-*.ui
+# Node.js
+node_modules/
+web/dist/
 
 # py2app
 *.app

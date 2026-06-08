@@ -1,5 +1,13 @@
-FROM python:3.12-slim AS base
+# Stage 1: Build React frontend
+FROM node:20-slim AS frontend
+WORKDIR /app/web
+COPY web/package.json web/package-lock.json ./
+RUN npm ci
+COPY web/ .
+RUN npm run build
 
+# Stage 2: Python runtime
+FROM python:3.12-slim AS base
 WORKDIR /app
 
 RUN apt-get update && \
@@ -12,5 +20,8 @@ COPY src/ src/
 RUN pip install --no-cache-dir . && \
     rm -rf /root/.cache
 
-ENTRYPOINT ["router-security-tool"]
-CMD ["--help"]
+COPY --from=frontend /app/web/dist web/dist/
+
+EXPOSE 8000
+
+ENTRYPOINT ["router-security-web"]

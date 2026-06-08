@@ -4,102 +4,104 @@
 [![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-A security assessment tool for network devices. Connects to routers via SSH, runs categorized security checks, and generates actionable findings with vendor-specific intelligence.
+A security assessment tool for network devices. Connects to routers via SSH, runs categorized security checks, and reports findings through a real-time web dashboard or CLI.
 
 ## What It Does
 
-1. **Connects** to a device over SSH (or serial console)
+1. **Connects** to a device over SSH
 2. **Runs generic security checks** — SSH hardening, default credentials, exposed services, firewall rules, file permissions, running processes
-3. **Auto-detects the device platform** and runs a vendor-specific profile (OpenWrt, Linksys, Cisco IOS)
+3. **Auto-detects the device platform** and runs vendor-specific checks (OpenWrt, Linksys, Cisco IOS)
 4. **Reports findings** with severity ratings, evidence, and remediation steps
-
-Example output from a live assessment:
-
-```
-PROFILE: linksys | FINDINGS: 6 | SEVERITY: 1 High, 4 Medium, 1 Info
-  [High    ] FW-001      Firewall has no DROP/REJECT rules
-  [Medium  ] SSH-001     Dropbear allows password authentication
-  [Medium  ] NET-001     37 services exposed on all interfaces
-  [Medium  ] PERM-001    Shadow file permissions too open
-  [Medium  ] FILE-002    Config files may contain plaintext credentials
-  [Info    ] LNK-JNAP-001  JNAP API service running
-```
+5. **Visualizes** risk scores, severity distribution, and trends over time
 
 ## Architecture
 
 ```
-src/
-├── assessment/
-│   ├── ssh_assessor.py          # Core assessment engine (8 generic check categories)
-│   ├── finding.py               # Finding data model shared across all checks
-│   ├── profiles/                # Device-specific security profiles
-│   │   ├── base.py              # Abstract profile base class
-│   │   ├── detect.py            # Auto-detection (picks profile from device_info)
-│   │   ├── openwrt.py           # UCI firewall, LuCI, wireless, packages, DNS
-│   │   ├── linksys.py           # JNAP API, syscfg, firmware version, cloud agent
-│   │   └── cisco.py             # running-config, VTY lines, SNMP, AAA, services
-│   ├── service_scanner.py       # Network port/service scanning
-│   └── vulnerability_scanner.py # CVE correlation and risk scoring
-├── connections/
-│   ├── manager.py               # SSH + serial connection handling
-│   └── detector.py              # USB/network device auto-discovery
-├── scraper/
-│   └── filesystem.py            # Remote filesystem exploration
-├── database/
-│   ├── cve_manager.py           # NVD API integration and CVE caching
-│   └── scan_history.py          # SQLite scan history
-├── gui/
-│   └── main_window.py           # PyQt5 interface with threaded workers
-└── reports/
-    └── export.py                # JSON/HTML/PDF report generation
+┌────────────────────────────────────────────────────────────────┐
+│                  React SPA (Vite + TypeScript + Tailwind)       │
+│  Dashboard │ Scan (WebSocket) │ History │ Filesystem Explorer  │
+└───────────────────────────┬────────────────────────────────────┘
+                            │ REST + WebSocket
+┌───────────────────────────┴────────────────────────────────────┐
+│                     FastAPI Backend                              │
+│  /api/scan  /api/devices  /api/history  /api/export  /ws/scan  │
+└───────┬────────────┬───────────────┬───────────────────────────┘
+        │            │               │
+┌───────┴──────┐ ┌───┴────────┐ ┌───┴─────────┐
+│  Assessment  │ │ Connections│ │  Database   │
+│  Engine      │ │ Manager    │ │  (SQLite)   │
+│  ──────────  │ │ ─────────  │ │  ─────────  │
+│  ssh_assessor│ │ SSH/Serial │ │ scan_history│
+│  profiles/*  │ │ detector   │ │ cve_manager │
+│  vuln_scanner│ │            │ │             │
+└──────────────┘ └────────────┘ └─────────────┘
 ```
 
 ## Installation
 
-### pip (CLI only — no GUI dependencies)
+### Quick Start (Web UI)
+
+```bash
+git clone https://github.com/DevenDucommun/router-security-tool.git
+cd router-security-tool
+python3 -m venv .venv && source .venv/bin/activate
+pip install -e ".[dev]"
+cd web && npm install && npm run build && cd ..
+router-security-web
+# Open http://localhost:8000
+```
+
+### CLI Only (no Node.js required)
 
 ```bash
 pip install git+https://github.com/DevenDucommun/router-security-tool.git
 router-security-tool scan 192.168.1.1 -p yourpass
 ```
 
-### pip (with GUI)
+### Docker (single container: API + Web UI)
 
 ```bash
-pip install "router-security-tool[gui] @ git+https://github.com/DevenDucommun/router-security-tool.git"
-python -m gui.main_window  # or: python main.py
-```
-
-### Docker (no Python required)
-
-```bash
-docker run --rm --network host -e ROUTER_PASS=yourpass \
-  ghcr.io/devenducommun/router-security-tool:latest scan 192.168.1.1
+docker build -t router-security-tool .
+docker run --rm -p 8000:8000 --network host router-security-tool
+# Open http://localhost:8000
 ```
 
 ### Development
 
 ```bash
-git clone https://github.com/DevenDucommun/router-security-tool.git
-cd router-security-tool
-python3 -m venv .venv
+# Terminal 1: Backend
 source .venv/bin/activate
-pip install -e ".[dev]"
-```
+uvicorn api.main:app --reload --app-dir src
 
-Requirements: Python 3.9+
+# Terminal 2: Frontend (hot reload)
+cd web && npm run dev
+# Open http://localhost:5173 (proxies API to :8000)
+```
 
 ## Usage
 
-### GUI Mode
+### Web Dashboard
+
+The web UI provides:
+- **Dashboard** — Summary cards, severity donut chart, risk trend line, recent scans
+- **Scan** — Target input, device discovery, real-time WebSocket progress, findings with evidence
+- **History** — Filterable table, risk trend visualization, export/delete actions
+- **Explorer** — Remote filesystem browsing with security findings
+
+### CLI
 
 ```bash
-python main.py
+# Quick scan with table output
+router-security-tool scan 192.168.1.1 -u root -p $ROUTER_PASS
+
+# JSON output for CI pipelines
+router-security-tool scan 192.168.1.1 -p $ROUTER_PASS --format json
+
+# Exit codes: 0=clean, 1=medium, 2=high, 3=critical
+echo $?
 ```
 
-Connect to a device, then click "Run Vulnerability Scan" for a full assessment.
-
-### Programmatic Usage
+### Programmatic
 
 ```python
 from connections.manager import ConnectionManager
@@ -120,27 +122,51 @@ conn.disconnect()
 ## Testing
 
 ```bash
-# Unit tests (168 tests, no network required)
-pytest tests/unit/
+# All unit tests (API + profiles + CLI + scanner)
+pytest tests/unit/ -v
 
 # Integration tests against a live device
 ROUTER_PASS=yourpass pytest tests/integration/ -m network -v
 
-# Full suite with coverage
-pytest --cov=src
+# Coverage
+pytest --cov=src tests/unit/
 ```
 
 ## Device Profiles
 
-The tool auto-detects device type from SSH banner and system info, then runs platform-specific checks:
+Auto-detects platform from SSH banner and system info:
 
 | Profile | Detection Signal | Checks |
 |---------|-----------------|--------|
 | **OpenWrt** | `/etc/openwrt_release` | UCI firewall zones, LuCI exposure, wireless encryption, package audit, DNS rebinding |
-| **Linksys** | Hostname pattern `Community*` | JNAP API auth, firmware age, `/tmp/syscfg` permissions, cloud agent, default SSID |
-| **Cisco IOS** | `Cisco IOS` in version string | enable password type, VTY ACLs, SNMP communities, CDP, AAA, remote logging |
+| **Linksys** | Hostname `Community*` | JNAP API auth, firmware age, `/tmp/syscfg` permissions, cloud agent, default SSID |
+| **Cisco IOS** | `Cisco IOS` in version | enable password type, VTY ACLs, SNMP communities, CDP, AAA, remote logging |
 
 Adding a new profile: subclass `DeviceProfile`, implement `matches()` and `run_checks()`, register in `detect.py`.
+
+## API Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/health` | Health check |
+| POST | `/api/scan` | Run assessment (returns full result) |
+| WS | `/ws/scan` | Run assessment with real-time progress |
+| GET | `/api/devices` | Auto-discover network devices |
+| GET | `/api/history` | List scan history (filterable) |
+| GET | `/api/history/stats` | Aggregate statistics |
+| DELETE | `/api/history/{id}` | Delete a scan |
+| POST | `/api/export/{format}` | Generate report (json/html/pdf) |
+| POST | `/api/filesystem` | Explore remote filesystem |
+
+Interactive API docs available at `http://localhost:8000/docs` (Swagger UI).
+
+## Keyboard Shortcuts
+
+| Key | Action |
+|-----|--------|
+| `Ctrl+N` | New scan |
+| `Ctrl+D` | Dashboard |
+| `Ctrl+H` | History |
 
 ## Security Notice
 

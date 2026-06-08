@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "router-security-tool"
 version = "1.0.0"
-description = "Network device security assessment tool with GUI"
+description = "Network device security assessment tool with web dashboard"
 readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.9"
@@ -34,17 +34,17 @@ dependencies = [
     "reportlab>=4.0.0",
     "requests>=2.28.0",
     "pyyaml>=6.0",
+    "fastapi>=0.110.0",
+    "uvicorn[standard]>=0.27.0",
+    "pydantic>=2.5.0",
 ]
 
 [project.optional-dependencies]
-gui = [
-    "PyQt5>=5.15.7",
-]
 dev = [
-    "PyQt5>=5.15.7",
     "pytest>=7.1.2",
-    "pytest-qt>=4.2.0",
     "pytest-cov>=4.0.0",
+    "pytest-asyncio>=0.23.0",
+    "httpx>=0.27.0",
     "black>=22.6.0",
     "flake8>=5.0.4",
     "isort>=5.12.0",
@@ -52,6 +52,7 @@ dev = [
 
 [project.scripts]
 router-security-tool = "cli:main"
+router-security-web = "api.server:main"
 
 [project.urls]
 Repository = "https://github.com/DevenDucommun/router-security-tool"
