@@ -8,8 +8,7 @@ A full-stack security assessment platform for network devices. Connects to route
 
 **Tech Stack:** React 18 + TypeScript + Tailwind CSS | FastAPI + WebSocket | SQLite | Paramiko SSH | Docker
 
-<!-- TODO: Add screenshot of dashboard -->
-<!-- ![Dashboard](docs/screenshots/dashboard.png) -->
+![Dashboard](docs/screenshots/dashboard.png)
 
 ## Key Features
 
