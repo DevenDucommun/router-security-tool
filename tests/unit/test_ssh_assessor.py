@@ -3,7 +3,8 @@
 import pytest
 from unittest.mock import MagicMock, patch
 
-from assessment.ssh_assessor import SSHAssessor, Finding
+from assessment.ssh_assessor import SSHAssessor
+from assessment.finding import Finding
 
 
 @pytest.fixture

@@ -9,46 +9,17 @@ import re
 from typing import Dict, List, Optional, Callable
 
 from connections.manager import ConnectionManager
+from assessment.finding import (
+    Finding,
+    SEVERITY_CRITICAL,
+    SEVERITY_HIGH,
+    SEVERITY_MEDIUM,
+    SEVERITY_LOW,
+    SEVERITY_INFO,
+)
+from assessment.profiles.detect import detect_profile
 
 logger = logging.getLogger(__name__)
-
-SEVERITY_CRITICAL = "Critical"
-SEVERITY_HIGH = "High"
-SEVERITY_MEDIUM = "Medium"
-SEVERITY_LOW = "Low"
-SEVERITY_INFO = "Info"
-
-
-class Finding:
-    """A single security finding from an assessment check."""
-
-    def __init__(
-        self,
-        check_id: str,
-        title: str,
-        severity: str,
-        description: str,
-        evidence: str = "",
-        remediation: str = "",
-    ):
-        self.check_id = check_id
-        self.title = title
-        self.severity = severity
-        self.description = description
-        self.evidence = evidence
-        self.remediation = remediation
-
-    def to_dict(self) -> Dict:
-        return {
-            "id": self.check_id,
-            "title": self.title,
-            "severity": self.severity,
-            "type": "SSH Assessment",
-            "description": self.description,
-            "evidence": self.evidence,
-            "remediation": self.remediation,
-            "affected_component": "Device Configuration",
-        }
 
 
 class SSHAssessor:
@@ -94,6 +65,16 @@ class SSHAssessor:
             except Exception as e:
                 logger.warning(f"Check failed: {check_fn.__name__}: {e}")
 
+        # Run device-specific profile checks if a profile matches
+        profile_name = None
+        profile_cls = detect_profile(self.device_info)
+        if profile_cls:
+            emit(f"Device profile detected: {profile_cls.name}")
+            profile = profile_cls(self._cmd, self.device_info)
+            profile_findings = profile.run_checks(progress_callback=progress_callback)
+            self.findings.extend(profile_findings)
+            profile_name = profile.name
+
         emit(f"Assessment complete. {len(self.findings)} findings.")
 
         return {
@@ -101,6 +82,7 @@ class SSHAssessor:
             "findings": [f.to_dict() for f in self.findings],
             "finding_count": len(self.findings),
             "severity_summary": self._severity_summary(),
+            "profile": profile_name,
         }
 
     def _cmd(self, command: str) -> str:
