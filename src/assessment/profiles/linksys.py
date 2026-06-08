@@ -17,7 +17,7 @@ from .base import DeviceProfile
 
 KNOWN_VULNERABLE_FIRMWARE = {
     "1.0.00": "Multiple RCE vulnerabilities (pre-2023 builds)",
-    "1.0.01": "JNAP authentication bypass (CVE-2023-XXXXX)",
+    "1.0.01": "JNAP authentication bypass (pre-2023 builds)",
 }
 
 LINKSYS_DEFAULT_CREDS = [
