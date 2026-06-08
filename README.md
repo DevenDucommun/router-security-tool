@@ -56,6 +56,29 @@ src/
 
 ## Installation
 
+### pip (CLI only — no GUI dependencies)
+
+```bash
+pip install git+https://github.com/DevenDucommun/router-security-tool.git
+router-security-tool scan 192.168.1.1 -p yourpass
+```
+
+### pip (with GUI)
+
+```bash
+pip install "router-security-tool[gui] @ git+https://github.com/DevenDucommun/router-security-tool.git"
+python -m gui.main_window  # or: python main.py
+```
+
+### Docker (no Python required)
+
+```bash
+docker run --rm --network host -e ROUTER_PASS=yourpass \
+  ghcr.io/devenducommun/router-security-tool:latest scan 192.168.1.1
+```
+
+### Development
+
 ```bash
 git clone https://github.com/DevenDucommun/router-security-tool.git
 cd router-security-tool
