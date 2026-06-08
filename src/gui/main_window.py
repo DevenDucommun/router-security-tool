@@ -31,8 +31,11 @@ from PyQt5.QtCore import QThread, pyqtSignal, Qt, QTimer
 from PyQt5.QtGui import QFont, QColor
 
 from connections.detector import ConnectionDetector
+from connections.manager import ConnectionManager
 from assessment.vulnerability_scanner import VulnerabilityScanner
+from assessment.ssh_assessor import SSHAssessor
 from reports.export import ReportExporter
+from scraper.filesystem import FileSystemScraper
 from utils.mock_data import get_sample_scan
 from database.scan_history import ScanHistoryDB
 
@@ -97,6 +100,53 @@ class VulnerabilityScanWorker(QThread):
             self.error.emit(f"Scan failed: {str(e)}")
 
 
+class SSHAssessmentWorker(QThread):
+    """Background worker for live SSH security assessment"""
+
+    progress = pyqtSignal(str)
+    scan_complete = pyqtSignal(dict)
+    error = pyqtSignal(str)
+
+    def __init__(self, connection_manager: ConnectionManager):
+        super().__init__()
+        self.connection_manager = connection_manager
+
+    def run(self):
+        """Run SSH assessment in background"""
+        try:
+            assessor = SSHAssessor(self.connection_manager)
+            results = assessor.run_assessment(
+                progress_callback=lambda msg: self.progress.emit(msg)
+            )
+            self.scan_complete.emit(results)
+        except Exception as e:
+            logger.error(f"SSH assessment failed: {e}")
+            self.error.emit(str(e))
+
+
+class FileScraperWorker(QThread):
+    """Background worker for filesystem exploration over SSH"""
+
+    progress = pyqtSignal(str)
+    scan_complete = pyqtSignal(dict)
+    error = pyqtSignal(str)
+
+    def __init__(self, connection_manager: ConnectionManager):
+        super().__init__()
+        self.connection_manager = connection_manager
+
+    def run(self):
+        """Run filesystem scraping in background"""
+        try:
+            self.progress.emit("Exploring filesystem...")
+            scraper = FileSystemScraper(self.connection_manager)
+            results = scraper.explore_filesystem()
+            self.scan_complete.emit(results)
+        except Exception as e:
+            logger.error(f"Filesystem scraping failed: {e}")
+            self.error.emit(str(e))
+
+
 class MainWindow(QMainWindow):
     """Main application window"""
 
@@ -106,6 +156,7 @@ class MainWindow(QMainWindow):
         self.current_connection = None
         self.current_target_host = None
         self.scan_results = None
+        self.connection_manager = ConnectionManager()
         
         # Initialize scan history database
         try:
@@ -368,51 +419,115 @@ class MainWindow(QMainWindow):
         self.connect_button.setText("⏳ Connecting...")
         self.progress_bar.setRange(0, 0)
         self.update_status("🔗 Connecting to device...")
-        self.log_console(f"🔗 Attempting connection to: {connection}")
+        self.log_console(f"🔗 Attempting SSH connection to: {connection.get('ip', 'device')}")
 
-        # Extract target host for vulnerability scanning
-        if connection.get("type") == "network":
-            self.current_target_host = connection.get("ip")
-            self.vuln_scan_button.setEnabled(True)
+        host = connection.get("ip")
+        port = connection.get("port", 22)
+
+        if connection.get("type") == "network" and host:
+            success = self.connection_manager.connect_ssh(host, username, password, port=port)
+        elif connection.get("type") == "serial":
+            success = self.connection_manager.connect_serial(connection.get("device", ""))
         else:
-            self.current_target_host = None
-            self.vuln_scan_button.setEnabled(False)
-
-        self.current_connection = connection
-        self.connection_info = {
-            "host": connection.get("ip"),
-            "username": username,
-            "type": connection.get("type"),
-        }
-
-        # Network targets can be scanned without an interactive session
-        self.scrape_button.setEnabled(connection.get("type") == "network")
+            success = False
 
         self.progress_bar.setRange(0, 100)
-        self.progress_bar.setValue(100)
         self.connect_button.setEnabled(True)
+
+        if success:
+            self.current_connection = connection
+            self.current_target_host = host
+            self.vuln_scan_button.setEnabled(True)
+            self.scrape_button.setEnabled(True)
+            self.progress_bar.setValue(100)
+            self.connect_button.setText("🔌 Disconnect")
+            self.connect_button.clicked.disconnect()
+            self.connect_button.clicked.connect(self.disconnect_device)
+            self.update_status(f"✅ Connected to {host}")
+            self.log_console(f"✅ SSH connection established to {host}")
+            self.show_notification(
+                "✅ Connected",
+                f"SSH session active on {host}. You can now run assessments."
+            )
+        else:
+            self.progress_bar.setValue(0)
+            self.connect_button.setText("🔗 Connect")
+            self.update_status("❌ Connection failed")
+            self.log_console(f"❌ Failed to connect to {host}")
+            QMessageBox.critical(
+                self, "Connection Failed",
+                f"Could not connect to {host}.\n\nCheck credentials and ensure SSH is enabled on the device."
+            )
+
+    def disconnect_device(self):
+        """Disconnect from the current device"""
+        self.connection_manager.disconnect()
+        self.current_connection = None
+        self.vuln_scan_button.setEnabled(False)
+        self.scrape_button.setEnabled(False)
         self.connect_button.setText("🔗 Connect")
-        self.update_status(f"✅ Target set: {connection.get('ip', 'device')}")
-        self.show_notification(
-            "✅ Target Selected",
-            f"Target {connection.get('ip', 'device')} ready for vulnerability scanning."
-        )
-        self.log_console(f"✅ Target selected: {connection.get('ip', 'device')}")
+        self.connect_button.clicked.disconnect()
+        self.connect_button.clicked.connect(self.connect_to_device)
+        self.update_status("🔌 Disconnected")
+        self.log_console("🔌 SSH session closed")
 
     def start_scraping(self):
-        """Start file system scraping"""
-        self.update_status("Starting file system scan...")
+        """Start file system scraping over SSH"""
+        if not self.connection_manager.is_connected():
+            QMessageBox.warning(self, "Not Connected", "Connect to a device first.")
+            return
+
         self.scrape_button.setEnabled(False)
+        self.update_status("Exploring filesystem...")
+        self.progress_bar.setRange(0, 0)
 
-        # TODO: Implement scraping worker
-        self.log_filesystem("Starting file system exploration...")
-        self.log_filesystem("/bin - System binaries")
-        self.log_filesystem("/etc - Configuration files")
-        self.log_filesystem("/tmp - Temporary files")
-        self.log_filesystem("/var/log - Log files")
+        self.scraper_worker = FileScraperWorker(self.connection_manager)
+        self.scraper_worker.progress.connect(self.update_status)
+        self.scraper_worker.scan_complete.connect(self.display_filesystem_results)
+        self.scraper_worker.error.connect(self.filesystem_scan_error)
+        self.scraper_worker.start()
 
+    def display_filesystem_results(self, results):
+        """Display filesystem scraping results"""
         self.scrape_button.setEnabled(True)
-        self.update_status("File system scan complete!")
+        self.progress_bar.setRange(0, 100)
+        self.progress_bar.setValue(100)
+
+        self.filesystem_output.clear()
+        file_structure = results.get("file_structure", {})
+        interesting = results.get("interesting_files", [])
+        findings = results.get("security_findings", [])
+
+        self.log_filesystem(f"Explored {len(file_structure)} directories\n")
+        for path, files in file_structure.items():
+            self.log_filesystem(f"{path}/ ({len(files)} entries)")
+            for f in files[:10]:
+                self.log_filesystem(f"  {f['permissions']}  {f['name']}")
+            if len(files) > 10:
+                self.log_filesystem(f"  ... and {len(files) - 10} more")
+            self.log_filesystem("")
+
+        if interesting:
+            self.log_filesystem(f"\n--- Interesting Files ({len(interesting)}) ---")
+            for f in interesting:
+                self.log_filesystem(f"  {f['path']}  ({f['reason']})")
+
+        if findings:
+            self.log_filesystem(f"\n--- Security Findings ({len(findings)}) ---")
+            for f in findings:
+                self.log_filesystem(f"  [{f['severity'].upper()}] {f['description']}")
+                if f.get("file"):
+                    self.log_filesystem(f"    File: {f['file']}")
+
+        self.results_tabs.setCurrentIndex(1)
+        self.update_status(f"Filesystem scan complete: {len(findings)} findings")
+
+    def filesystem_scan_error(self, error_message):
+        """Handle filesystem scan errors"""
+        self.scrape_button.setEnabled(True)
+        self.progress_bar.setRange(0, 100)
+        self.progress_bar.setValue(0)
+        self.update_status(f"❌ Filesystem scan failed: {error_message}")
 
     def generate_report(self):
         """Generate security assessment report from last scan results"""
@@ -458,7 +573,7 @@ class MainWindow(QMainWindow):
         self.filesystem_output.append(message)
 
     def start_vulnerability_scan(self):
-        """Start vulnerability scanning"""
+        """Start vulnerability scanning — uses SSH assessment if connected, network scan otherwise"""
         if not self.current_target_host:
             QMessageBox.warning(
                 self, "⚠️ No Target", "No target host available for scanning. Please connect to a network device first."
@@ -467,25 +582,135 @@ class MainWindow(QMainWindow):
 
         self.vuln_scan_button.setEnabled(False)
         self.vuln_scan_button.setText("⏳ Scanning...")
-        self.update_status(f"🔍 Starting vulnerability scan on {self.current_target_host}...")
-        self.progress_bar.setRange(0, 0)  # Indeterminate progress
-        
-        # Show notification
+        self.progress_bar.setRange(0, 0)
+
+        if self.connection_manager.is_connected():
+            # Live SSH assessment — deeper checks via active session
+            self.update_status(f"🔍 Running live SSH assessment on {self.current_target_host}...")
+            self.log_console(f"🔍 Starting SSH-based security assessment...")
+            self.ssh_assessment_worker = SSHAssessmentWorker(self.connection_manager)
+            self.ssh_assessment_worker.progress.connect(self.update_status)
+            self.ssh_assessment_worker.progress.connect(self.log_console)
+            self.ssh_assessment_worker.scan_complete.connect(self.display_ssh_assessment_results)
+            self.ssh_assessment_worker.error.connect(self.vulnerability_scan_error)
+            self.ssh_assessment_worker.start()
+        else:
+            # Network-only scan (port scan + CVE correlation)
+            self.update_status(f"🔍 Starting network vulnerability scan on {self.current_target_host}...")
+            self.show_notification(
+                "🔍 Vulnerability Scan Started",
+                f"Scanning {self.current_target_host} for security vulnerabilities. This may take several minutes..."
+            )
+            self.vuln_worker = VulnerabilityScanWorker(self.current_target_host)
+            self.vuln_worker.progress.connect(self.update_status)
+            self.vuln_worker.scan_complete.connect(self.display_vulnerability_results)
+            self.vuln_worker.error.connect(self.vulnerability_scan_error)
+            self.vuln_worker.start()
+
+    def display_ssh_assessment_results(self, results):
+        """Display SSH assessment results in the vulnerability results format"""
+        # Convert SSH assessment format to the standard vulnerability display format
+        scan_results = {
+            "target": self.current_target_host,
+            "device_info": results.get("device_info", {}),
+            "services": {},
+            "vulnerabilities": results.get("findings", []),
+            "risk_score": self._calculate_ssh_risk_score(results.get("findings", [])),
+            "recommendations": [],
+        }
+
+        # Store for export
+        self.last_scan_results = scan_results
+        self.scan_results = scan_results
+
+        # Build display output
+        findings = results.get("findings", [])
+        device_info = results.get("device_info", {})
+        severity_summary = results.get("severity_summary", {})
+
+        output = "═" * 80 + "\n"
+        output += "SSH SECURITY ASSESSMENT RESULTS\n"
+        output += "═" * 80 + "\n\n"
+
+        output += "📱 DEVICE INFORMATION\n"
+        output += "-" * 80 + "\n"
+        output += f"Target: {self.current_target_host}\n"
+        if device_info.get("hostname"):
+            output += f"Hostname: {device_info['hostname']}\n"
+        if device_info.get("uname"):
+            output += f"System: {device_info['uname']}\n"
+        if device_info.get("firmware_version"):
+            output += f"Firmware: {device_info['firmware_version']}\n"
+        if device_info.get("uptime"):
+            output += f"Uptime: {device_info['uptime']}\n"
+        output += "\n"
+
+        risk_score = scan_results["risk_score"]
+        risk_level = self._get_risk_level(risk_score)
+        output += f"⚠️  RISK SCORE: {risk_score:.1f}/10.0 ({risk_level})\n"
+        output += f"Findings: {severity_summary.get('Critical', 0)} critical, "
+        output += f"{severity_summary.get('High', 0)} high, "
+        output += f"{severity_summary.get('Medium', 0)} medium, "
+        output += f"{severity_summary.get('Low', 0)} low\n"
+        output += "-" * 80 + "\n\n"
+
+        if findings:
+            output += f"🔐 FINDINGS ({len(findings)})\n"
+            output += "=" * 80 + "\n"
+
+            by_severity = {"Critical": [], "High": [], "Medium": [], "Low": [], "Info": []}
+            for f in findings:
+                sev = f.get("severity", "Low")
+                if sev in by_severity:
+                    by_severity[sev].append(f)
+
+            emoji_map = {"Critical": "🔴", "High": "🟠", "Medium": "🟡", "Low": "🟢", "Info": "ℹ️"}
+            for severity in ["Critical", "High", "Medium", "Low", "Info"]:
+                items = by_severity[severity]
+                if not items:
+                    continue
+                output += f"\n{emoji_map[severity]} {severity.upper()} ({len(items)})\n"
+                output += "-" * 80 + "\n"
+                for f in items:
+                    output += f"\n  [{f.get('id', '')}] {f.get('title', '')}\n"
+                    output += f"  {f.get('description', '')}\n"
+                    if f.get("evidence"):
+                        output += f"  Evidence: {f['evidence'][:150]}\n"
+                    if f.get("remediation"):
+                        output += f"  Fix: {f['remediation']}\n"
+        else:
+            output += "✅ No security issues found!\n"
+
+        self.security_output.setText(output)
+        self.results_tabs.setCurrentIndex(2)
+        self.vuln_scan_button.setEnabled(True)
+        self.vuln_scan_button.setText("🔍 Run Vulnerability Scan")
+        self.progress_bar.setRange(0, 100)
+        self.progress_bar.setValue(100)
+        self.export_button.setEnabled(True)
+        self.update_status(f"✅ SSH assessment complete: {len(findings)} findings")
+        self.save_scan_to_history(scan_results)
+
+        risk_emoji = "🔴" if risk_score >= 7.0 else "🟡" if risk_score >= 4.0 else "🟢"
         self.show_notification(
-            "🔍 Vulnerability Scan Started",
-            f"Scanning {self.current_target_host} for security vulnerabilities. This may take several minutes..."
+            f"{risk_emoji} SSH Assessment Complete",
+            f"Found {len(findings)} issues (risk: {risk_score:.1f}/10.0)"
         )
 
-        # Start vulnerability scan worker
-        self.vuln_worker = VulnerabilityScanWorker(self.current_target_host)
-        self.vuln_worker.progress.connect(self.update_status)
-        self.vuln_worker.scan_complete.connect(self.display_vulnerability_results)
-        self.vuln_worker.error.connect(self.vulnerability_scan_error)
-        self.vuln_worker.start()
+    def _calculate_ssh_risk_score(self, findings: list) -> float:
+        """Calculate risk score from SSH assessment findings"""
+        if not findings:
+            return 0.0
+        severity_weights = {"Critical": 10.0, "High": 7.5, "Medium": 5.0, "Low": 2.0, "Info": 0.5}
+        total = sum(severity_weights.get(f.get("severity", "Low"), 2.0) for f in findings)
+        avg = total / len(findings)
+        multiplier = min(len(findings) / 8.0, 1.5)
+        return min(avg * multiplier, 10.0)
 
     def display_vulnerability_results(self, results):
         """Display vulnerability scan results"""
         self.scan_results = results
+        self.last_scan_results = results
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(100)
         self.vuln_scan_button.setEnabled(True)

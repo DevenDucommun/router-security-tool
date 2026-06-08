@@ -46,7 +46,7 @@ class ConnectionManager:
 
             # Test connection with a simple command
             if self.connection.is_open:
-                self.send_command("\\n")  # Send newline to get prompt
+                self.send_command("\n")  # Send newline to get prompt
                 time.sleep(0.5)
                 response = self.read_response()
                 logger.debug(f"Initial response: {response}")
@@ -125,7 +125,7 @@ class ConnectionManager:
         try:
             if self.connection_type == "serial":
                 # Send command via serial
-                self.connection.write(f"{command}\\n".encode())
+                self.connection.write(f"{command}\n".encode())
                 time.sleep(0.1)  # Give device time to process
                 return self.read_response()
 

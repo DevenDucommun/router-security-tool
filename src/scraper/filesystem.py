@@ -113,7 +113,7 @@ class FileSystemScraper:
     def parse_directory_listing(self, listing: str) -> List[Dict]:
         """Parse ls -la output into structured data"""
         files = []
-        lines = listing.split("\\n")
+        lines = listing.split("\n")
 
         for line in lines:
             line = line.strip()
