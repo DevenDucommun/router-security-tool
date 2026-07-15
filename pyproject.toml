@@ -4,10 +4,10 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "router-security-tool"
-version = "1.0.0"
+version = "1.0.1"
 description = "Network device security assessment tool with web dashboard"
 readme = "README.md"
-license = {text = "MIT"}
+license = "MIT"
 requires-python = ">=3.9"
 authors = [
     {name = "Deven Ducommun"}
@@ -16,7 +16,6 @@ keywords = ["security", "network", "vulnerability-scanner", "router", "assessmen
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Information Technology",
-    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
