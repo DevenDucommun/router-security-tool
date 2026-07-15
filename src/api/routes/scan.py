@@ -1,10 +1,13 @@
 import asyncio
+import logging
 import os
 import time
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException
 
 from api.schemas import ScanRequest, ScanResult, Finding, DeviceInfo
+
+logger = logging.getLogger(__name__)
 
 rest_router = APIRouter()
 ws_router = APIRouter()
@@ -110,16 +113,16 @@ async def run_scan(request: ScanRequest):
 
     try:
         from database.scan_history import ScanHistoryDB
-        db = ScanHistoryDB()
-        db.save_scan({
-            "target": scan_result.target,
-            "device_info": {"vendor": scan_result.profile, "product": scan_result.device_info.hostname},
-            "risk_score": scan_result.risk_score,
-            "risk_level": _risk_level(scan_result.risk_score),
-            "vulnerabilities": [f.model_dump(mode="json") for f in scan_result.findings],
-        })
-    except Exception:
-        pass
+        with ScanHistoryDB() as db:
+            db.save_scan({
+                "target": scan_result.target,
+                "device_info": {"vendor": scan_result.profile, "product": scan_result.device_info.hostname},
+                "risk_score": scan_result.risk_score,
+                "risk_level": _risk_level(scan_result.risk_score),
+                "vulnerabilities": [f.model_dump(mode="json") for f in scan_result.findings],
+            })
+    except Exception as e:
+        logger.warning("Failed to persist scan history for %s: %s", scan_result.target, e)
 
     return scan_result
 
