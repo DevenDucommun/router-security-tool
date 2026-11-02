@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional, Any
 from enum import Enum
 
@@ -55,6 +55,41 @@ class ScanHistoryEntry(BaseModel):
     risk_level: str
     device_vendor: str = ""
     device_model: str = ""
+    tags: list[str] = Field(default_factory=list)
+    notes: str = ""
+
+
+MAX_TAGS = 10
+MAX_TAG_LENGTH = 32
+MAX_NOTES_LENGTH = 2000
+
+
+class ScanAnnotationUpdate(BaseModel):
+    """Partial update: omitted fields are left unchanged."""
+
+    tags: Optional[list[str]] = None
+    notes: Optional[str] = Field(default=None, max_length=MAX_NOTES_LENGTH)
+
+    @field_validator("tags")
+    @classmethod
+    def normalize_tags(cls, tags: Optional[list[str]]) -> Optional[list[str]]:
+        if tags is None:
+            return None
+        cleaned: list[str] = []
+        seen: set[str] = set()
+        for raw in tags:
+            tag = " ".join(raw.split())
+            if not tag:
+                continue
+            if len(tag) > MAX_TAG_LENGTH:
+                raise ValueError(f"tags must be at most {MAX_TAG_LENGTH} characters")
+            if tag.lower() in seen:
+                continue
+            seen.add(tag.lower())
+            cleaned.append(tag)
+        if len(cleaned) > MAX_TAGS:
+            raise ValueError(f"at most {MAX_TAGS} tags per scan")
+        return cleaned
 
 
 class HistoryStats(BaseModel):

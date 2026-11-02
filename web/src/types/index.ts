@@ -37,6 +37,13 @@ export interface ScanHistoryEntry {
   risk_level: string;
   device_vendor: string;
   device_model: string;
+  tags: string[];
+  notes: string;
+}
+
+export interface ScanAnnotationUpdate {
+  tags?: string[];
+  notes?: string;
 }
 
 export interface HistoryStats {

@@ -18,16 +18,18 @@ async def export_scan(format: str, scan_id: int = None):
         raise HTTPException(status_code=400, detail="Format must be json, html, or pdf")
 
     db = _get_db()
-
-    if scan_id:
-        scan_results = db.get_scan_by_id(scan_id)
-        if not scan_results:
-            raise HTTPException(status_code=404, detail="Scan not found")
-    else:
-        scans = db.get_all_scans(limit=1)
-        if not scans:
-            raise HTTPException(status_code=404, detail="No scans available")
-        scan_results = db.get_scan_by_id(scans[0]["id"])
+    try:
+        if scan_id:
+            scan_results = db.get_scan_by_id(scan_id)
+            if not scan_results:
+                raise HTTPException(status_code=404, detail="Scan not found")
+        else:
+            scans = db.get_all_scans(limit=1)
+            if not scans:
+                raise HTTPException(status_code=404, detail="No scans available")
+            scan_results = db.get_scan_by_id(scans[0]["id"])
+    finally:
+        db.close()
 
     from reports.export import ReportExporter
     exporter = ReportExporter()

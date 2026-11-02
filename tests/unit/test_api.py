@@ -21,7 +21,9 @@ class TestHealthEndpoint:
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "ok"
-        assert data["version"] == "1.0.0"
+        # Reported version comes from package metadata, not a hardcoded string.
+        from importlib.metadata import version
+        assert data["version"] == version("router-security-tool")
 
 
 class TestScanEndpoint:
@@ -204,9 +206,6 @@ class TestHistoryEndpoint:
             {"id": 1, "target": "192.168.1.1", "scan_timestamp": "2024-01-15T10:30:00",
              "risk_score": 6.5, "vulnerability_count": 4, "risk_level": "MEDIUM",
              "device_vendor": "", "device_model": ""},
-            {"id": 2, "target": "10.0.0.1", "scan_timestamp": "2024-01-16T10:30:00",
-             "risk_score": 3.0, "vulnerability_count": 1, "risk_level": "LOW",
-             "device_vendor": "", "device_model": ""},
         ]
         mock_get_db.return_value = mock_db
 
@@ -215,6 +214,9 @@ class TestHistoryEndpoint:
         data = response.json()
         assert len(data) == 1
         assert data[0]["target"] == "192.168.1.1"
+        # Filtering happens in SQL (before LIMIT), not after the fact.
+        assert mock_db.get_all_scans.call_args.kwargs["target"] == "192.168.1.1"
+        mock_db.close.assert_called_once()
 
     @patch("api.routes.history._get_db")
     def test_get_history_stats(self, mock_get_db, client):

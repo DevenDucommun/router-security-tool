@@ -10,6 +10,17 @@ from api.routes import api_router
 from api.routes.scan import ws_router as scan_ws_router
 
 
+def _package_version() -> str:
+    try:
+        from importlib.metadata import PackageNotFoundError, version
+        return version("router-security-tool")
+    except PackageNotFoundError:
+        return "0.0.0+source"
+
+
+APP_VERSION = _package_version()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     yield
@@ -17,7 +28,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Router Security Tool",
-    version="1.0.0",
+    version=APP_VERSION,
     lifespan=lifespan,
 )
 
@@ -32,7 +43,7 @@ app.add_middleware(
 
 @app.get("/api/health")
 async def health():
-    return {"status": "ok", "version": "1.0.0"}
+    return {"status": "ok", "version": APP_VERSION}
 
 
 app.include_router(api_router)

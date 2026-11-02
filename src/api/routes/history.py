@@ -1,6 +1,9 @@
+from contextlib import contextmanager
+from typing import Optional
+
 from fastapi import APIRouter, HTTPException
 
-from api.schemas import ScanHistoryEntry, HistoryStats, ScanDiff
+from api.schemas import ScanHistoryEntry, HistoryStats, ScanDiff, ScanAnnotationUpdate
 
 router = APIRouter()
 
@@ -10,30 +13,42 @@ def _get_db():
     return ScanHistoryDB()
 
 
-@router.get("/history", response_model=list[ScanHistoryEntry])
-async def get_history(limit: int = 50, target: str = None, risk_level: str = None):
+@contextmanager
+def _db():
+    """Open a history DB for one request and always close it."""
+    db = _get_db()
     try:
-        db = _get_db()
-        scans = db.get_all_scans(limit=limit)
+        yield db
+    finally:
+        db.close()
 
-        if target:
-            scans = [s for s in scans if s["target"] == target]
-        if risk_level:
-            scans = [s for s in scans if s["risk_level"] == risk_level]
 
-        return [
-            ScanHistoryEntry(
-                id=s["id"],
-                target=s["target"],
-                scan_timestamp=s["scan_timestamp"],
-                risk_score=s["risk_score"],
-                vulnerability_count=s["vulnerability_count"],
-                risk_level=s["risk_level"],
-                device_vendor=s.get("device_vendor", ""),
-                device_model=s.get("device_model", ""),
-            )
-            for s in scans
-        ]
+def _entry(s: dict) -> ScanHistoryEntry:
+    return ScanHistoryEntry(
+        id=s["id"],
+        target=s["target"],
+        scan_timestamp=s["scan_timestamp"],
+        risk_score=s["risk_score"],
+        vulnerability_count=s["vulnerability_count"],
+        risk_level=s["risk_level"],
+        device_vendor=s.get("device_vendor") or "",
+        device_model=s.get("device_model") or "",
+        tags=s.get("tags") or [],
+        notes=s.get("notes") or "",
+    )
+
+
+@router.get("/history", response_model=list[ScanHistoryEntry])
+async def get_history(
+    limit: int = 50,
+    target: Optional[str] = None,
+    risk_level: Optional[str] = None,
+    tag: Optional[str] = None,
+):
+    try:
+        with _db() as db:
+            scans = db.get_all_scans(limit=limit, target=target, risk_level=risk_level, tag=tag)
+        return [_entry(s) for s in scans]
     except Exception:
         return []
 
@@ -41,8 +56,8 @@ async def get_history(limit: int = 50, target: str = None, risk_level: str = Non
 @router.get("/history/stats", response_model=HistoryStats)
 async def get_history_stats():
     try:
-        db = _get_db()
-        stats = db.get_statistics()
+        with _db() as db:
+            stats = db.get_statistics()
         return HistoryStats(
             total_scans=stats.get("total_scans", 0),
             unique_targets=stats.get("unique_targets", 0),
@@ -52,6 +67,15 @@ async def get_history_stats():
         )
     except Exception:
         return HistoryStats()
+
+
+@router.get("/history/tags", response_model=list[str])
+async def get_history_tags():
+    try:
+        with _db() as db:
+            return db.get_all_tags()
+    except Exception:
+        return []
 
 
 def _load_for_diff(db, scan_id: int) -> dict:
@@ -75,12 +99,9 @@ async def diff_history(base: int, head: int):
 
     from assessment.scan_diff import diff_scans
 
-    db = _get_db()
-    try:
+    with _db() as db:
         base_scan = _load_for_diff(db, base)
         head_scan = _load_for_diff(db, head)
-    finally:
-        db.close()
 
     if base_scan["target"] != head_scan["target"]:
         raise HTTPException(
@@ -97,8 +118,8 @@ async def diff_history(base: int, head: int):
 @router.get("/history/{scan_id}")
 async def get_scan(scan_id: int):
     try:
-        db = _get_db()
-        scan = db.get_scan_by_id(scan_id)
+        with _db() as db:
+            scan = db.get_scan_by_id(scan_id)
         if not scan:
             raise HTTPException(status_code=404, detail="Scan not found")
         return scan
@@ -108,11 +129,24 @@ async def get_scan(scan_id: int):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.patch("/history/{scan_id}", response_model=ScanHistoryEntry)
+async def update_scan_annotations(scan_id: int, update: ScanAnnotationUpdate):
+    """Set tags and/or notes on a stored scan."""
+    with _db() as db:
+        if not db.update_annotations(scan_id, tags=update.tags, notes=update.notes):
+            raise HTTPException(status_code=404, detail="Scan not found")
+        summary = db.get_scan_summary(scan_id)
+    if not summary:
+        raise HTTPException(status_code=404, detail="Scan not found")
+    return _entry(summary)
+
+
 @router.delete("/history/{scan_id}")
 async def delete_scan(scan_id: int):
     try:
-        db = _get_db()
-        if db.delete_scan(scan_id):
+        with _db() as db:
+            deleted = db.delete_scan(scan_id)
+        if deleted:
             return {"status": "deleted"}
         raise HTTPException(status_code=404, detail="Scan not found")
     except HTTPException:

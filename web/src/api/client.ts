@@ -5,6 +5,7 @@ import type {
   DiscoveredDevice,
   FilesystemResult,
   ScanDiff,
+  ScanAnnotationUpdate,
 } from "../types";
 
 const BASE = "/api";
@@ -35,14 +36,23 @@ export const api = {
   devices: () =>
     request<{ devices: DiscoveredDevice[] }>("/devices"),
 
-  history: (limit = 50, target?: string, riskLevel?: string) => {
+  history: (limit = 50, target?: string, riskLevel?: string, tag?: string) => {
     const params = new URLSearchParams({ limit: String(limit) });
     if (target) params.set("target", target);
     if (riskLevel) params.set("risk_level", riskLevel);
+    if (tag) params.set("tag", tag);
     return request<ScanHistoryEntry[]>(`/history?${params}`);
   },
 
   historyStats: () => request<HistoryStats>("/history/stats"),
+
+  historyTags: () => request<string[]>("/history/tags"),
+
+  updateAnnotations: (id: number, update: ScanAnnotationUpdate) =>
+    request<ScanHistoryEntry>(`/history/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(update),
+    }),
 
   getScan: (id: number) => request<ScanResult>(`/history/${id}`),
 

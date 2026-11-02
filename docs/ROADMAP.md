@@ -11,7 +11,7 @@ Focus: Make existing scan data more actionable.
 | **Scan Diff View** ✅ | Compare two scans of the same target side-by-side. Show new findings, resolved findings, and risk score delta. Link from History page. |
 | **Multi-Device Batch Scan** | Accept a list of targets (CIDR, comma-separated, or file upload) and scan them in parallel. Aggregate results view with per-device breakdown. |
 | **Remediation Verification** | After fixing an issue, re-run only the specific failed checks (not the full assessment). One-click "verify fix" from a finding card. |
-| **Scan Tags & Notes** | Add labels (e.g. "pre-patch", "post-update") and free-text notes to scans for context in History. |
+| **Scan Tags & Notes** ✅ | Add labels (e.g. "pre-patch", "post-update") and free-text notes to scans for context in History. |
 
 ### Technical Work
 - WebSocket multiplexing for parallel scans

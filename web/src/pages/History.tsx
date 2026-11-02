@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Trash2, Download, BarChart3, GitCompare } from "lucide-react";
+import { Trash2, Download, BarChart3, GitCompare, Tag, StickyNote } from "lucide-react";
 import { api } from "../api/client";
 import { RiskTrend } from "../components/charts/RiskTrend";
-import type { ScanHistoryEntry, HistoryStats } from "../types";
+import { AnnotationEditor } from "../components/history/AnnotationEditor";
+import type { ScanHistoryEntry, HistoryStats, ScanAnnotationUpdate } from "../types";
 
 export function History() {
   const [history, setHistory] = useState<ScanHistoryEntry[]>([]);
@@ -11,6 +12,9 @@ export function History() {
   const [loading, setLoading] = useState(true);
   const [targetFilter, setTargetFilter] = useState("");
   const [riskFilter, setRiskFilter] = useState("");
+  const [tagFilter, setTagFilter] = useState("");
+  const [allTags, setAllTags] = useState<string[]>([]);
+  const [editingId, setEditingId] = useState<number | null>(null);
   const [showStats, setShowStats] = useState(false);
   const [selected, setSelected] = useState<number[]>([]);
   const navigate = useNavigate();
@@ -33,25 +37,38 @@ export function History() {
     navigate(`/history/compare?base=${older.id}&head=${newer.id}`);
   };
 
-  const loadData = async () => {
-    setLoading(true);
-    try {
-      const [h, s] = await Promise.all([
-        api.history(100, targetFilter || undefined, riskFilter || undefined),
-        api.historyStats(),
-      ]);
-      setHistory(h);
-      setStats(s);
-    } catch {
-      // silent
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
-    loadData();
-  }, [targetFilter, riskFilter]);
+    let cancelled = false;
+    Promise.all([
+      api.history(100, targetFilter || undefined, riskFilter || undefined, tagFilter || undefined),
+      api.historyStats(),
+      api.historyTags(),
+    ])
+      .then(([h, s, t]) => {
+        if (cancelled) return;
+        setHistory(h);
+        setStats(s);
+        setAllTags(t);
+      })
+      .catch(() => {
+        // silent
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [targetFilter, riskFilter, tagFilter]);
+
+  const handleSaveAnnotations = async (id: number, update: ScanAnnotationUpdate) => {
+    const updated = await api.updateAnnotations(id, update);
+    setHistory((prev) => prev.map((s) => (s.id === id ? updated : s)));
+    setAllTags((prev) =>
+      [...new Set([...prev, ...updated.tags])].sort((a, b) => a.localeCompare(b)),
+    );
+    setEditingId(null);
+  };
 
   const handleDelete = async (id: number) => {
     if (!confirm(`Delete scan #${id}?`)) return;
@@ -126,6 +143,16 @@ export function History() {
             <option key={level} value={level}>{level}</option>
           ))}
         </select>
+        <select
+          value={tagFilter}
+          onChange={(e) => setTagFilter(e.target.value)}
+          className="bg-gray-900 border border-gray-700 rounded px-3 py-1.5 text-sm text-gray-300 focus:border-emerald-500 focus:outline-none"
+        >
+          <option value="">All Tags</option>
+          {allTags.map((t) => (
+            <option key={t} value={t}>{t}</option>
+          ))}
+        </select>
         <div className="ml-auto flex items-center gap-3">
           <span className="text-xs text-gray-500">
             {selected.length === 2 && !sameTarget
@@ -164,12 +191,14 @@ export function History() {
                   <th className="p-3">Risk Score</th>
                   <th className="p-3">Level</th>
                   <th className="p-3">Findings</th>
+                  <th className="p-3">Tags</th>
                   <th className="p-3">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-800">
                 {history.map((scan) => (
-                  <tr key={scan.id} className="text-gray-300 hover:bg-gray-800/50">
+                  <Fragment key={scan.id}>
+                  <tr className="text-gray-300 hover:bg-gray-800/50">
                     <td className="p-3">
                       <input
                         type="checkbox"
@@ -217,7 +246,33 @@ export function History() {
                     </td>
                     <td className="p-3 text-xs">{scan.vulnerability_count}</td>
                     <td className="p-3">
+                      <div className="flex flex-wrap items-center gap-1 max-w-[14rem]">
+                        {scan.tags.map((t) => (
+                          <button
+                            key={t}
+                            onClick={() => setTagFilter(t)}
+                            className="px-1.5 py-0.5 rounded text-[10px] bg-sky-500/10 text-sky-300 hover:bg-sky-500/20"
+                            title={`Filter by "${t}"`}
+                          >
+                            {t}
+                          </button>
+                        ))}
+                        {scan.notes && (
+                          <span title={scan.notes} className="text-gray-500">
+                            <StickyNote className="w-3 h-3" aria-label="Has notes" />
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="p-3">
                       <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => setEditingId(editingId === scan.id ? null : scan.id)}
+                          className="p-1 text-gray-500 hover:text-sky-400 rounded"
+                          title="Edit tags & notes"
+                        >
+                          <Tag className="w-3 h-3" />
+                        </button>
                         <button
                           onClick={() => handleExport(scan.id, "json")}
                           className="p-1 text-gray-500 hover:text-emerald-400 rounded"
@@ -235,6 +290,18 @@ export function History() {
                       </div>
                     </td>
                   </tr>
+                  {editingId === scan.id && (
+                    <tr className="bg-gray-950/60">
+                      <td colSpan={11} className="p-3">
+                        <AnnotationEditor
+                          scan={scan}
+                          onSave={(update) => handleSaveAnnotations(scan.id, update)}
+                          onCancel={() => setEditingId(null)}
+                        />
+                      </td>
+                    </tr>
+                  )}
+                  </Fragment>
                 ))}
               </tbody>
             </table>
