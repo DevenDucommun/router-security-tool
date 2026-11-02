@@ -1,7 +1,7 @@
 # Router Security Tool
 
 [![CI](https://github.com/DevenDucommun/router-security-tool/actions/workflows/ci.yml/badge.svg)](https://github.com/DevenDucommun/router-security-tool/actions/workflows/ci.yml)
-[![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
 A full-stack security assessment platform for network devices. Connects to routers via SSH, runs 40+ automated security checks with device-specific profiles, and presents findings through a real-time web dashboard.
