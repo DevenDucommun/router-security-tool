@@ -65,6 +65,43 @@ class HistoryStats(BaseModel):
     risk_distribution: dict[str, int] = Field(default_factory=dict)
 
 
+class DiffFinding(BaseModel):
+    id: str = ""
+    title: str = ""
+    severity: str = "Info"
+    category: str = ""
+    remediation: str = ""
+    previous_severity: Optional[str] = None
+    severity_changed: bool = False
+
+
+class DiffScanRef(BaseModel):
+    id: Optional[int] = None
+    target: str = ""
+    scan_timestamp: str = ""
+    risk_score: float = 0.0
+    finding_count: int = 0
+
+
+class DiffSummary(BaseModel):
+    new: int = 0
+    resolved: int = 0
+    persisting: int = 0
+    severity_changed: int = 0
+    new_by_severity: dict[str, int] = Field(default_factory=dict)
+    resolved_by_severity: dict[str, int] = Field(default_factory=dict)
+
+
+class ScanDiff(BaseModel):
+    base: DiffScanRef
+    head: DiffScanRef
+    risk_delta: float = 0.0
+    new: list[DiffFinding] = Field(default_factory=list)
+    resolved: list[DiffFinding] = Field(default_factory=list)
+    persisting: list[DiffFinding] = Field(default_factory=list)
+    summary: DiffSummary = Field(default_factory=DiffSummary)
+
+
 class DiscoveredDevice(BaseModel):
     ip: str = ""
     port: int = 22

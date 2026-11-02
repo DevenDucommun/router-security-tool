@@ -47,6 +47,41 @@ export interface HistoryStats {
   risk_distribution: Record<string, number>;
 }
 
+export interface DiffFinding {
+  id: string;
+  title: string;
+  severity: Severity;
+  category: string;
+  remediation: string;
+  previous_severity: Severity | null;
+  severity_changed: boolean;
+}
+
+export interface DiffScanRef {
+  id: number | null;
+  target: string;
+  scan_timestamp: string;
+  risk_score: number;
+  finding_count: number;
+}
+
+export interface ScanDiff {
+  base: DiffScanRef;
+  head: DiffScanRef;
+  risk_delta: number;
+  new: DiffFinding[];
+  resolved: DiffFinding[];
+  persisting: DiffFinding[];
+  summary: {
+    new: number;
+    resolved: number;
+    persisting: number;
+    severity_changed: number;
+    new_by_severity: Record<string, number>;
+    resolved_by_severity: Record<string, number>;
+  };
+}
+
 export interface DiscoveredDevice {
   ip: string;
   port: number;

@@ -276,6 +276,34 @@ class ScanHistoryDB:
             logger.error(f"Failed to retrieve scan #{scan_id}: {e}")
             return None
     
+    def get_scan_summary(self, scan_id: int) -> Optional[Dict[str, Any]]:
+        """
+        Get the indexed metadata row for a scan (no full results).
+
+        Args:
+            scan_id: Scan ID
+
+        Returns:
+            Scan summary dictionary or None if not found
+        """
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute("""
+                SELECT
+                    id, target, scan_timestamp, device_vendor, device_model,
+                    firmware_version, risk_score, risk_level, vulnerability_count,
+                    scan_duration, created_at
+                FROM scans
+                WHERE id = ?
+            """, (scan_id,))
+
+            row = cursor.fetchone()
+            return dict(row) if row else None
+
+        except Exception as e:
+            logger.error(f"Failed to retrieve summary for scan #{scan_id}: {e}")
+            return None
+
     def get_unique_targets(self) -> List[str]:
         """
         Get list of unique targets that have been scanned.
