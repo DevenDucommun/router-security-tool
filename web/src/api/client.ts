@@ -4,6 +4,7 @@ import type {
   HistoryStats,
   DiscoveredDevice,
   FilesystemResult,
+  ScanDiff,
 } from "../types";
 
 const BASE = "/api";
@@ -44,6 +45,9 @@ export const api = {
   historyStats: () => request<HistoryStats>("/history/stats"),
 
   getScan: (id: number) => request<ScanResult>(`/history/${id}`),
+
+  diffScans: (base: number, head: number) =>
+    request<ScanDiff>(`/history/diff?base=${base}&head=${head}`),
 
   deleteScan: (id: number) =>
     request<{ status: string }>(`/history/${id}`, { method: "DELETE" }),

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Trash2, Download, BarChart3 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { Trash2, Download, BarChart3, GitCompare } from "lucide-react";
 import { api } from "../api/client";
 import { RiskTrend } from "../components/charts/RiskTrend";
 import type { ScanHistoryEntry, HistoryStats } from "../types";
@@ -11,6 +12,26 @@ export function History() {
   const [targetFilter, setTargetFilter] = useState("");
   const [riskFilter, setRiskFilter] = useState("");
   const [showStats, setShowStats] = useState(false);
+  const [selected, setSelected] = useState<number[]>([]);
+  const navigate = useNavigate();
+
+  const selectedScans = history.filter((s) => selected.includes(s.id));
+  const sameTarget =
+    selectedScans.length === 2 && selectedScans[0].target === selectedScans[1].target;
+
+  const toggleSelected = (id: number) => {
+    setSelected((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id].slice(-2),
+    );
+  };
+
+  const handleCompare = () => {
+    if (!sameTarget) return;
+    const [older, newer] = [...selectedScans].sort(
+      (a, b) => new Date(a.scan_timestamp).getTime() - new Date(b.scan_timestamp).getTime(),
+    );
+    navigate(`/history/compare?base=${older.id}&head=${newer.id}`);
+  };
 
   const loadData = async () => {
     setLoading(true);
@@ -105,6 +126,21 @@ export function History() {
             <option key={level} value={level}>{level}</option>
           ))}
         </select>
+        <div className="ml-auto flex items-center gap-3">
+          <span className="text-xs text-gray-500">
+            {selected.length === 2 && !sameTarget
+              ? "Pick two scans of the same target"
+              : `${selected.length}/2 selected`}
+          </span>
+          <button
+            onClick={handleCompare}
+            disabled={!sameTarget}
+            className="flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-md transition-colors bg-emerald-600 hover:bg-emerald-500 text-white disabled:bg-gray-800 disabled:text-gray-500"
+          >
+            <GitCompare className="w-3 h-3" />
+            Compare
+          </button>
+        </div>
       </div>
 
       {/* Table */}
@@ -120,6 +156,7 @@ export function History() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-gray-500 text-left text-xs uppercase tracking-wider bg-gray-900/80">
+                  <th className="p-3 w-8" aria-label="Select" />
                   <th className="p-3">ID</th>
                   <th className="p-3">Date</th>
                   <th className="p-3">Target</th>
@@ -133,6 +170,15 @@ export function History() {
               <tbody className="divide-y divide-gray-800">
                 {history.map((scan) => (
                   <tr key={scan.id} className="text-gray-300 hover:bg-gray-800/50">
+                    <td className="p-3">
+                      <input
+                        type="checkbox"
+                        checked={selected.includes(scan.id)}
+                        onChange={() => toggleSelected(scan.id)}
+                        aria-label={`Select scan #${scan.id} for comparison`}
+                        className="accent-emerald-500"
+                      />
+                    </td>
                     <td className="p-3 font-mono text-xs text-gray-500">#{scan.id}</td>
                     <td className="p-3 text-xs">
                       {new Date(scan.scan_timestamp).toLocaleString()}

@@ -110,21 +110,30 @@ async def run_scan(request: ScanRequest):
 
     duration = time.time() - start
     scan_result = _build_scan_result(results, request.host, duration)
+    _persist_scan(scan_result)
+    return scan_result
 
+
+def _persist_scan(scan_result: ScanResult):
+    """Save a completed scan to history. Returns the scan ID, or None on failure."""
     try:
         from database.scan_history import ScanHistoryDB
         with ScanHistoryDB() as db:
-            db.save_scan({
+            return db.save_scan({
                 "target": scan_result.target,
-                "device_info": {"vendor": scan_result.profile, "product": scan_result.device_info.hostname},
+                "device_info": {
+                    "vendor": scan_result.profile,
+                    "product": scan_result.device_info.hostname,
+                    "version": scan_result.device_info.firmware_version,
+                },
                 "risk_score": scan_result.risk_score,
                 "risk_level": _risk_level(scan_result.risk_score),
+                "scan_duration": scan_result.scan_duration,
                 "vulnerabilities": [f.model_dump(mode="json") for f in scan_result.findings],
             })
     except Exception as e:
         logger.warning("Failed to persist scan history for %s: %s", scan_result.target, e)
-
-    return scan_result
+        return None
 
 
 @ws_router.websocket("/ws/scan")
@@ -172,9 +181,11 @@ async def scan_websocket(ws: WebSocket):
 
         duration = time.time() - start
         scan_result = _build_scan_result(results, host, duration)
+        scan_id = await asyncio.to_thread(_persist_scan, scan_result)
         await ws.send_json({
             "type": "result",
             "data": scan_result.model_dump(mode="json"),
+            "scan_id": scan_id,
         })
 
     except WebSocketDisconnect:
