@@ -5,6 +5,8 @@ import type {
   DiscoveredDevice,
   FilesystemResult,
   ScanDiff,
+  ScanAnnotationUpdate,
+  VerifyResult,
 } from "../types";
 
 const BASE = "/api";
@@ -32,17 +34,32 @@ export const api = {
       body: JSON.stringify({ host, port, username, password }),
     }),
 
+  verify: (host: string, username: string, password: string, port: number, checkIds: string[]) =>
+    request<VerifyResult>("/scan/verify", {
+      method: "POST",
+      body: JSON.stringify({ host, port, username, password, check_ids: checkIds }),
+    }),
+
   devices: () =>
     request<{ devices: DiscoveredDevice[] }>("/devices"),
 
-  history: (limit = 50, target?: string, riskLevel?: string) => {
+  history: (limit = 50, target?: string, riskLevel?: string, tag?: string) => {
     const params = new URLSearchParams({ limit: String(limit) });
     if (target) params.set("target", target);
     if (riskLevel) params.set("risk_level", riskLevel);
+    if (tag) params.set("tag", tag);
     return request<ScanHistoryEntry[]>(`/history?${params}`);
   },
 
   historyStats: () => request<HistoryStats>("/history/stats"),
+
+  historyTags: () => request<string[]>("/history/tags"),
+
+  updateAnnotations: (id: number, update: ScanAnnotationUpdate) =>
+    request<ScanHistoryEntry>(`/history/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(update),
+    }),
 
   getScan: (id: number) => request<ScanResult>(`/history/${id}`),
 

@@ -28,6 +28,23 @@ export interface ScanResult {
   scan_duration: number;
 }
 
+export type VerifyStatus = "resolved" | "still_failing" | "unknown";
+
+export interface VerifyItem {
+  id: string;
+  status: VerifyStatus;
+  title: string;
+}
+
+export interface VerifyResult {
+  target: string;
+  profile: string | null;
+  results: VerifyItem[];
+  findings: Finding[];
+  checks_run: string[];
+  scan_duration: number;
+}
+
 export interface ScanHistoryEntry {
   id: number;
   target: string;
@@ -37,6 +54,13 @@ export interface ScanHistoryEntry {
   risk_level: string;
   device_vendor: string;
   device_model: string;
+  tags: string[];
+  notes: string;
+}
+
+export interface ScanAnnotationUpdate {
+  tags?: string[];
+  notes?: string;
 }
 
 export interface HistoryStats {

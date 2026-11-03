@@ -6,7 +6,7 @@ Runs categorized checks and emits findings progressively.
 
 import logging
 import re
-from typing import Dict, List, Optional, Callable
+from typing import Dict, List, Optional, Callable, Set
 
 from connections.manager import ConnectionManager
 from assessment.finding import (
@@ -17,6 +17,7 @@ from assessment.finding import (
     SEVERITY_LOW,
     SEVERITY_INFO,
 )
+from assessment.profiles.base import CheckSpec, finding_family
 from assessment.profiles.detect import detect_profile
 
 logger = logging.getLogger(__name__)
@@ -24,6 +25,18 @@ logger = logging.getLogger(__name__)
 
 class SSHAssessor:
     """Runs security checks against a live SSH connection."""
+
+    # (progress message, method name, finding-ID families the method can emit)
+    GENERIC_CHECKS: List[CheckSpec] = [
+        ("Checking SSH configuration...", "_check_ssh_config", ("SSH",)),
+        ("Checking for default credentials...", "_check_default_credentials", ("CRED",)),
+        ("Enumerating listening services...", "_check_listening_services", ("NET",)),
+        ("Auditing file permissions...", "_check_file_permissions", ("PERM",)),
+        ("Checking firewall rules...", "_check_firewall", ("FW",)),
+        ("Scanning for sensitive files...", "_check_sensitive_files", ("FILE",)),
+        ("Analyzing running processes...", "_check_processes", ("PROC",)),
+        ("Checking system hardening...", "_check_system_hardening", ("HARD",)),
+    ]
 
     def __init__(self, connection: ConnectionManager):
         self.conn = connection
@@ -34,10 +47,49 @@ class SSHAssessor:
         self, progress_callback: Optional[Callable[[str], None]] = None
     ) -> Dict:
         """Run full assessment. Returns structured results."""
+        return self._run(progress_callback, only_families=None)
+
+    def run_verification(
+        self,
+        check_ids: List[str],
+        progress_callback: Optional[Callable[[str], None]] = None,
+    ) -> Dict:
+        """
+        Re-run only the checks that can produce the given finding IDs.
+
+        Each requested ID is reported as "resolved" (its check ran and no longer
+        flags it), "still_failing", or "unknown" (no check is registered for its
+        family on this device). Other findings from the re-run checks are
+        returned too, since a fix can surface a sibling issue.
+        """
+        requested = list(dict.fromkeys(cid.strip() for cid in check_ids if cid and cid.strip()))
+        families = {finding_family(cid) for cid in requested}
+        results = self._run(progress_callback, only_families=families)
+
+        covered = set(results["families_run"])
+        found_ids = {f["id"] for f in results["findings"]}
+        statuses = {}
+        for cid in requested:
+            if finding_family(cid) not in covered:
+                statuses[cid] = "unknown"
+            elif cid in found_ids:
+                statuses[cid] = "still_failing"
+            else:
+                statuses[cid] = "resolved"
+
+        results["verification"] = statuses
+        return results
+
+    def _run(
+        self,
+        progress_callback: Optional[Callable[[str], None]],
+        only_families: Optional[Set[str]],
+    ) -> Dict:
         if not self.conn.is_connected():
             raise ConnectionError("No active SSH connection")
 
         self.findings = []
+        families_run: Set[str] = set()
 
         def emit(msg: str):
             if progress_callback:
@@ -47,33 +99,32 @@ class SSHAssessor:
         emit("Gathering device information...")
         self.device_info = self._gather_device_info()
 
-        checks = [
-            ("Checking SSH configuration...", self._check_ssh_config),
-            ("Checking for default credentials...", self._check_default_credentials),
-            ("Enumerating listening services...", self._check_listening_services),
-            ("Auditing file permissions...", self._check_file_permissions),
-            ("Checking firewall rules...", self._check_firewall),
-            ("Scanning for sensitive files...", self._check_sensitive_files),
-            ("Analyzing running processes...", self._check_processes),
-            ("Checking system hardening...", self._check_system_hardening),
-        ]
-
-        for message, check_fn in checks:
+        for message, method_name, fams in self.GENERIC_CHECKS:
+            if only_families is not None and not only_families.intersection(fams):
+                continue
             emit(message)
+            families_run.update(fams)
             try:
-                check_fn()
+                getattr(self, method_name)()
             except Exception as e:
-                logger.warning(f"Check failed: {check_fn.__name__}: {e}")
+                logger.warning(f"Check failed: {method_name}: {e}")
 
         # Run device-specific profile checks if a profile matches
         profile_name = None
         profile_cls = detect_profile(self.device_info)
         if profile_cls:
             emit(f"Device profile detected: {profile_cls.name}")
-            profile = profile_cls(self._cmd, self.device_info)
-            profile_findings = profile.run_checks(progress_callback=progress_callback)
-            self.findings.extend(profile_findings)
-            profile_name = profile.name
+            profile_families = profile_cls.families()
+            if only_families is None or only_families.intersection(profile_families):
+                profile = profile_cls(self._cmd, self.device_info)
+                profile_findings = profile.run_checks(
+                    progress_callback=progress_callback, only_families=only_families
+                )
+                self.findings.extend(profile_findings)
+                families_run.update(
+                    profile_families if only_families is None else profile_families & only_families
+                )
+            profile_name = profile_cls.name
 
         emit(f"Assessment complete. {len(self.findings)} findings.")
 
@@ -83,6 +134,7 @@ class SSHAssessor:
             "finding_count": len(self.findings),
             "severity_summary": self._severity_summary(),
             "profile": profile_name,
+            "families_run": sorted(families_run),
         }
 
     def _cmd(self, command: str) -> str:

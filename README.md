@@ -16,6 +16,9 @@ A full-stack security assessment platform for network devices. Connects to route
 - **Auto-detection** of device platform (OpenWrt, Linksys, Cisco IOS) with vendor-specific checks
 - **Risk scoring** algorithm with severity-weighted findings and trend tracking
 - **Web dashboard** with severity distribution charts, risk trends, and scan history
+- **Scan comparison** — diff two scans of the same device: new, resolved, and still-open findings plus the risk change
+- **Tags & notes** on scans (e.g. `pre-patch`, `post-update`) with tag filtering in History
+- **Verify fix** — after remediating, re-run only the checks behind a finding (or all findings) and see Resolved / Still failing, without a full rescan
 - **Remote filesystem explorer** with security finding annotations
 - **Multi-format export** (JSON, HTML, PDF) for reporting
 - **CLI mode** with exit codes suitable for CI/CD pipelines
@@ -110,10 +113,15 @@ Adding a new profile: subclass `DeviceProfile`, implement `matches()` and `run_c
 |--------|------|-------------|
 | GET | `/api/health` | Health check |
 | POST | `/api/scan` | Run assessment (returns full result) |
+| POST | `/api/scan/verify` | Re-run only the checks behind the given finding IDs (not saved to history) |
 | WS | `/ws/scan` | Run assessment with real-time progress |
 | GET | `/api/devices` | Auto-discover network devices |
-| GET | `/api/history` | List scan history (filterable by target, risk level) |
+| GET | `/api/history` | List scan history (filterable by target, risk level, tag) |
 | GET | `/api/history/stats` | Aggregate statistics |
+| GET | `/api/history/tags` | Tags in use across all scans |
+| GET | `/api/history/diff?base=&head=` | Compare two scans of the same target |
+| GET | `/api/history/{id}` | Full stored scan result |
+| PATCH | `/api/history/{id}` | Set tags and/or notes on a scan |
 | DELETE | `/api/history/{id}` | Delete a scan record |
 | POST | `/api/export/{format}` | Generate report (json/html/pdf) |
 | POST | `/api/filesystem` | Explore remote filesystem |

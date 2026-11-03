@@ -10,9 +10,9 @@ Checks specific to Cisco IOS/IOS-XE devices:
 """
 
 import re
-from typing import Dict, List, Optional, Callable
+from typing import Dict
 
-from assessment.finding import Finding, SEVERITY_HIGH, SEVERITY_MEDIUM, SEVERITY_LOW, SEVERITY_INFO
+from assessment.finding import SEVERITY_HIGH, SEVERITY_MEDIUM, SEVERITY_LOW, SEVERITY_INFO
 from .base import DeviceProfile
 
 
@@ -39,23 +39,14 @@ class CiscoIOSProfile(DeviceProfile):
 
         return min(score, 1.0)
 
-    def run_checks(self, progress_callback: Optional[Callable[[str], None]] = None) -> List[Finding]:
-        self.findings = []
-
-        checks = [
-            ("Analyzing running configuration...", self._check_running_config),
-            ("Checking VTY line security...", self._check_vty_lines),
-            ("Auditing service configuration...", self._check_services),
-            ("Checking AAA configuration...", self._check_aaa),
-            ("Checking logging configuration...", self._check_logging),
-            ("Checking SNMP configuration...", self._check_snmp),
-        ]
-
-        for msg, check_fn in checks:
-            self._emit(msg, progress_callback)
-            check_fn()
-
-        return self.findings
+    CHECKS = [
+        ("Analyzing running configuration...", "_check_running_config", ("CISCO-CFG", "CISCO-AUTH")),
+        ("Checking VTY line security...", "_check_vty_lines", ("CISCO-VTY",)),
+        ("Auditing service configuration...", "_check_services", ("CISCO-SVC",)),
+        ("Checking AAA configuration...", "_check_aaa", ("CISCO-AAA",)),
+        ("Checking logging configuration...", "_check_logging", ("CISCO-LOG",)),
+        ("Checking SNMP configuration...", "_check_snmp", ("CISCO-SNMP",)),
+    ]
 
     def _get_running_config(self) -> str:
         config = self._cmd("show running-config")

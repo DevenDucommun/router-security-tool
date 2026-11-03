@@ -92,10 +92,12 @@ class ScanHistoryDB:
             """)
             
             cursor.execute("""
-                CREATE INDEX IF NOT EXISTS idx_vulnerabilities_severity 
+                CREATE INDEX IF NOT EXISTS idx_vulnerabilities_severity
                 ON vulnerabilities(severity)
             """)
-            
+
+            self._migrate_annotations(cursor)
+
             self.conn.commit()
             logger.info(f"Database initialized at {self.db_path}")
             
@@ -103,6 +105,26 @@ class ScanHistoryDB:
             logger.error(f"Failed to initialize database: {e}")
             raise
     
+    def _migrate_annotations(self, cursor):
+        """Add tags/notes columns to databases created before v1.1."""
+        cursor.execute("PRAGMA table_info(scans)")
+        columns = {row["name"] for row in cursor.fetchall()}
+        if "tags" not in columns:
+            cursor.execute("ALTER TABLE scans ADD COLUMN tags TEXT NOT NULL DEFAULT '[]'")
+        if "notes" not in columns:
+            cursor.execute("ALTER TABLE scans ADD COLUMN notes TEXT NOT NULL DEFAULT ''")
+
+    @staticmethod
+    def _row_to_summary(row) -> Dict[str, Any]:
+        summary = dict(row)
+        try:
+            tags = json.loads(summary.get("tags") or "[]")
+        except (TypeError, ValueError):
+            tags = []
+        summary["tags"] = [t for t in tags if isinstance(t, str)] if isinstance(tags, list) else []
+        summary["notes"] = summary.get("notes") or ""
+        return summary
+
     def save_scan(self, scan_results: Dict[str, Any]) -> int:
         """
         Save scan results to database.
@@ -183,33 +205,56 @@ class ScanHistoryDB:
             self.conn.rollback()
             raise
     
-    def get_all_scans(self, limit: int = 100) -> List[Dict[str, Any]]:
+    def get_all_scans(
+        self,
+        limit: int = 100,
+        target: Optional[str] = None,
+        risk_level: Optional[str] = None,
+        tag: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
         """
-        Get all scans, most recent first.
-        
+        Get scans, most recent first, optionally filtered.
+
+        Filters are applied in SQL before the limit, so a filtered view is not
+        truncated by unrelated newer scans.
+
         Args:
             limit: Maximum number of scans to return
-        
+            target: Only scans of this target
+            risk_level: Only scans with this risk level
+            tag: Only scans carrying this tag (case-insensitive)
+
         Returns:
             List of scan summaries
         """
         try:
             cursor = self.conn.cursor()
-            cursor.execute("""
-                SELECT 
+            query = """
+                SELECT
                     id, target, scan_timestamp, device_vendor, device_model,
                     firmware_version, risk_score, risk_level, vulnerability_count,
-                    scan_duration, created_at
+                    scan_duration, created_at, tags, notes
                 FROM scans
-                ORDER BY scan_timestamp DESC
-                LIMIT ?
-            """, (limit,))
-            
-            scans = []
-            for row in cursor.fetchall():
-                scans.append(dict(row))
-            
-            return scans
+                WHERE 1=1
+            """
+            params: List[Any] = []
+            if target:
+                query += " AND target = ?"
+                params.append(target)
+            if risk_level:
+                query += " AND risk_level = ?"
+                params.append(risk_level)
+            if tag:
+                query += (
+                    " AND EXISTS (SELECT 1 FROM json_each(scans.tags)"
+                    " WHERE lower(json_each.value) = lower(?))"
+                )
+                params.append(tag)
+            query += " ORDER BY scan_timestamp DESC LIMIT ?"
+            params.append(limit)
+
+            cursor.execute(query, params)
+            return [self._row_to_summary(row) for row in cursor.fetchall()]
             
         except Exception as e:
             logger.error(f"Failed to retrieve scans: {e}")
@@ -292,17 +337,61 @@ class ScanHistoryDB:
                 SELECT
                     id, target, scan_timestamp, device_vendor, device_model,
                     firmware_version, risk_score, risk_level, vulnerability_count,
-                    scan_duration, created_at
+                    scan_duration, created_at, tags, notes
                 FROM scans
                 WHERE id = ?
             """, (scan_id,))
 
             row = cursor.fetchone()
-            return dict(row) if row else None
+            return self._row_to_summary(row) if row else None
 
         except Exception as e:
             logger.error(f"Failed to retrieve summary for scan #{scan_id}: {e}")
             return None
+
+    def update_annotations(
+        self,
+        scan_id: int,
+        tags: Optional[List[str]] = None,
+        notes: Optional[str] = None,
+    ) -> bool:
+        """
+        Set the tags and/or notes on a scan. Fields left as None are unchanged.
+
+        Returns:
+            True if the scan exists and was updated, False otherwise
+        """
+        assignments = []
+        params: List[Any] = []
+        if tags is not None:
+            assignments.append("tags = ?")
+            params.append(json.dumps(tags))
+        if notes is not None:
+            assignments.append("notes = ?")
+            params.append(notes)
+        try:
+            cursor = self.conn.cursor()
+            if not assignments:
+                cursor.execute("SELECT 1 FROM scans WHERE id = ?", (scan_id,))
+                return cursor.fetchone() is not None
+            params.append(scan_id)
+            cursor.execute(f"UPDATE scans SET {', '.join(assignments)} WHERE id = ?", params)
+            self.conn.commit()
+            return cursor.rowcount > 0
+        except Exception as e:
+            logger.error(f"Failed to update annotations for scan #{scan_id}: {e}")
+            self.conn.rollback()
+            return False
+
+    def get_all_tags(self) -> List[str]:
+        """Distinct tags in use across all scans, sorted case-insensitively."""
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute("SELECT DISTINCT json_each.value AS tag FROM scans, json_each(scans.tags)")
+            return sorted({row["tag"] for row in cursor.fetchall()}, key=str.lower)
+        except Exception as e:
+            logger.error(f"Failed to list tags: {e}")
+            return []
 
     def get_unique_targets(self) -> List[str]:
         """

@@ -10,9 +10,9 @@ Checks specific to Linksys routers:
 """
 
 import re
-from typing import Dict, List, Optional, Callable
+from typing import Dict
 
-from assessment.finding import Finding, SEVERITY_CRITICAL, SEVERITY_HIGH, SEVERITY_MEDIUM, SEVERITY_LOW, SEVERITY_INFO
+from assessment.finding import SEVERITY_CRITICAL, SEVERITY_HIGH, SEVERITY_MEDIUM, SEVERITY_LOW, SEVERITY_INFO
 from .base import DeviceProfile
 
 KNOWN_VULNERABLE_FIRMWARE = {
@@ -54,23 +54,14 @@ class LinksysProfile(DeviceProfile):
 
         return min(score, 1.0)
 
-    def run_checks(self, progress_callback: Optional[Callable[[str], None]] = None) -> List[Finding]:
-        self.findings = []
-
-        checks = [
-            ("Checking JNAP API exposure...", self._check_jnap_api),
-            ("Auditing firmware version...", self._check_firmware_version),
-            ("Checking syscfg secrets...", self._check_syscfg_exposure),
-            ("Checking cloud connectivity config...", self._check_cloud_config),
-            ("Checking management interfaces...", self._check_management_access),
-            ("Checking for known Linksys defaults...", self._check_default_patterns),
-        ]
-
-        for msg, check_fn in checks:
-            self._emit(msg, progress_callback)
-            check_fn()
-
-        return self.findings
+    CHECKS = [
+        ("Checking JNAP API exposure...", "_check_jnap_api", ("LNK-JNAP",)),
+        ("Auditing firmware version...", "_check_firmware_version", ("LNK-FW",)),
+        ("Checking syscfg secrets...", "_check_syscfg_exposure", ("LNK-CFG",)),
+        ("Checking cloud connectivity config...", "_check_cloud_config", ("LNK-CLOUD",)),
+        ("Checking management interfaces...", "_check_management_access", ("LNK-MGMT",)),
+        ("Checking for known Linksys defaults...", "_check_default_patterns", ("LNK-DEF",)),
+    ]
 
     def _check_jnap_api(self):
         """Check JNAP API endpoint accessibility and authentication."""
