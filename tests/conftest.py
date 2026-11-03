@@ -12,6 +12,20 @@ import sys
 # Add src to Python path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
+REPO_DATA_DB = Path(__file__).parent.parent / "data" / "scan_history.db"
+
+
+@pytest.fixture(autouse=True)
+def isolated_history_db(tmp_path, monkeypatch):
+    """Never let a test write to the developer's real data/scan_history.db.
+
+    Any code path that opens ScanHistoryDB() without an explicit path (for
+    example POST /api/scan persisting a result) lands in a per-test temp file.
+    """
+    db_path = tmp_path / "scan_history.db"
+    monkeypatch.setenv("ROUTER_SECURITY_DB", str(db_path))
+    yield db_path
+
 
 @pytest.fixture
 def temp_db():

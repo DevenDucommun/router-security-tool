@@ -7,6 +7,7 @@ import type {
   ScanDiff,
   ScanAnnotationUpdate,
   VerifyResult,
+  TargetPreview,
 } from "../types";
 
 const BASE = "/api";
@@ -39,6 +40,9 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ host, port, username, password, check_ids: checkIds }),
     }),
+
+  previewTargets: (targets: string) =>
+    request<TargetPreview>("/targets/parse", { method: "POST", body: JSON.stringify({ targets }) }),
 
   devices: () =>
     request<{ devices: DiscoveredDevice[] }>("/devices"),

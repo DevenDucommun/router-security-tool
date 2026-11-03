@@ -8,6 +8,7 @@ from fastapi.staticfiles import StaticFiles
 
 from api.routes import api_router
 from api.routes.scan import ws_router as scan_ws_router
+from api.routes.batch import ws_router as batch_ws_router
 
 
 def _package_version() -> str:
@@ -48,6 +49,7 @@ async def health():
 
 app.include_router(api_router)
 app.include_router(scan_ws_router)
+app.include_router(batch_ws_router)
 
 static_path = Path(__file__).parent.parent.parent / "web" / "dist"
 if static_path.exists():

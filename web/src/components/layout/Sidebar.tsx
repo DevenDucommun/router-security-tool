@@ -1,14 +1,23 @@
 import { NavLink } from "react-router-dom";
-import { LayoutDashboard, Scan, History, FolderTree, Shield } from "lucide-react";
+import { useEffect, useState } from "react";
+import { LayoutDashboard, Scan, Layers, History, FolderTree, Shield } from "lucide-react";
+import { api } from "../../api/client";
 
 const links = [
   { to: "/", icon: LayoutDashboard, label: "Dashboard" },
   { to: "/scan", icon: Scan, label: "Scan" },
+  { to: "/batch", icon: Layers, label: "Batch Scan" },
   { to: "/history", icon: History, label: "History" },
   { to: "/explorer", icon: FolderTree, label: "Explorer" },
 ];
 
 export function Sidebar() {
+  const [version, setVersion] = useState<string | null>(null);
+
+  useEffect(() => {
+    api.health().then((h) => setVersion(h.version)).catch(() => setVersion(null));
+  }, []);
+
   return (
     <aside className="w-56 bg-gray-900 border-r border-gray-800 flex flex-col min-h-screen">
       <div className="p-4 border-b border-gray-800">
@@ -16,7 +25,7 @@ export function Sidebar() {
           <Shield className="w-6 h-6 text-emerald-400" />
           <span className="font-semibold text-sm text-white">Router Security</span>
         </div>
-        <span className="text-[10px] text-gray-500 mt-1 block">v1.0.0</span>
+        {version && <span className="text-[10px] text-gray-500 mt-1 block">v{version}</span>}
       </div>
 
       <nav className="flex-1 p-2 space-y-1">

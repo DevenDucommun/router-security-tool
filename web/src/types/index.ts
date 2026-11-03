@@ -121,6 +121,33 @@ export interface FilesystemResult {
   security_findings: Array<{ severity: string; description: string; file?: string }>;
 }
 
+export interface TargetPreview {
+  targets: string[];
+  errors: string[];
+  count: number;
+  max_targets: number;
+}
+
+export type BatchTargetStatus = "queued" | "running" | "done" | "error";
+
+export interface BatchTarget {
+  target: string;
+  status: BatchTargetStatus;
+  lastMessage?: string;
+  result?: ScanResult;
+  scanId?: number | null;
+  error?: string;
+}
+
+export interface BatchSummary {
+  total: number;
+  succeeded: number;
+  failed: number;
+  risk_levels: Record<string, number>;
+  highest_risk: Array<{ target: string; risk_score: number; risk_level: string; finding_count: number }>;
+  common_findings: Array<{ id: string; title: string; severity: Severity; devices: number }>;
+}
+
 export interface WSMessage {
   type: "progress" | "result" | "error";
   message?: string;
