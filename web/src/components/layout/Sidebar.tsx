@@ -1,12 +1,13 @@
 import { NavLink } from "react-router-dom";
 import { useEffect, useState } from "react";
-import { LayoutDashboard, Scan, Layers, History, FolderTree, Shield } from "lucide-react";
+import { LayoutDashboard, Scan, Layers, History, FolderTree, Shield, CalendarClock } from "lucide-react";
 import { api } from "../../api/client";
 
 const links = [
   { to: "/", icon: LayoutDashboard, label: "Dashboard" },
   { to: "/scan", icon: Scan, label: "Scan" },
   { to: "/batch", icon: Layers, label: "Batch Scan" },
+  { to: "/schedules", icon: CalendarClock, label: "Schedules" },
   { to: "/history", icon: History, label: "History" },
   { to: "/explorer", icon: FolderTree, label: "Explorer" },
 ];

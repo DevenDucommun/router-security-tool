@@ -16,6 +16,8 @@ export interface DeviceInfo {
   firmware_version: string;
   uptime: string;
   os_release: string;
+  dropbear_version?: string;
+  busybox_version?: string;
 }
 
 export interface ScanResult {
@@ -152,4 +154,98 @@ export interface WSMessage {
   type: "progress" | "result" | "error";
   message?: string;
   data?: ScanResult;
+  scan_id?: number | null;
 }
+
+export interface KnownCve {
+  id: string;
+  score: number | null;
+  severity: string;
+  published: string;
+  description: string;
+  known_exploited: boolean;
+  url: string;
+}
+
+export interface CveComponent {
+  key: string;
+  name: string;
+  vendor: string;
+  product: string;
+  version: string;
+  source: string;
+  cpe: string;
+  critical_only: boolean;
+  looked_up: boolean;
+  stale: boolean;
+  fetched_at: string | null;
+  total: number;
+  critical: number;
+  high: number;
+  known_exploited: number;
+  max_score: number | null;
+  cves: KnownCve[];
+}
+
+export interface CveReport {
+  scan_id: number;
+  target: string;
+  status: "ok" | "partial" | "unavailable" | "no_components";
+  components: CveComponent[];
+  summary: {
+    total: number;
+    critical: number;
+    high: number;
+    known_exploited: number;
+    max_score: number | null;
+    unpatched_critical: boolean;
+  };
+  errors: string[];
+  checked_at: string;
+  kernel_available: boolean;
+  kernel_included: boolean;
+}
+
+export type ScheduleStatus = "never" | "running" | "ok" | "error";
+
+export interface Schedule {
+  id: number;
+  name: string;
+  target: string;
+  port: number;
+  username: string;
+  interval_minutes: number;
+  enabled: boolean;
+  tags: string[];
+  next_run_at: string;
+  last_run_at: string | null;
+  last_status: ScheduleStatus;
+  last_scan_id: number | null;
+  last_error: string | null;
+  last_risk_score: number | null;
+  running: boolean;
+  created_at: string;
+  has_credential: boolean;
+}
+
+export interface SchedulerStatus {
+  enabled: boolean;
+  running: boolean;
+  poll_seconds: number;
+  key_source: "env" | "file" | "not_created";
+  schedules: Schedule[];
+}
+
+export interface ScheduleCreate {
+  target: string;
+  port: number;
+  username: string;
+  password: string;
+  interval_minutes: number;
+  name?: string;
+  tags?: string[];
+  enabled?: boolean;
+  run_immediately?: boolean;
+}
+
+export type ScheduleUpdate = Partial<Omit<ScheduleCreate, "target" | "run_immediately">>;

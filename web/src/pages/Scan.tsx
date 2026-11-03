@@ -4,6 +4,7 @@ import { useScanWebSocket } from "../api/ws";
 import { api } from "../api/client";
 import { FindingCard, type VerifyState } from "../components/scan/FindingCard";
 import { ProgressFeed } from "../components/scan/ProgressFeed";
+import { KnownCves } from "../components/scan/KnownCves";
 import { RiskGauge } from "../components/charts/RiskGauge";
 import { SeverityChart } from "../components/charts/SeverityChart";
 import type { ScanResult, DiscoveredDevice } from "../types";
@@ -16,7 +17,7 @@ export function Scan() {
   const [devices, setDevices] = useState<DiscoveredDevice[]>([]);
   const [discovering, setDiscovering] = useState(false);
 
-  const { connect, messages, result, error, isRunning } = useScanWebSocket();
+  const { connect, messages, result, scanId, error, isRunning } = useScanWebSocket();
   // Credentials of the scan whose results are shown, so "Verify fix" re-checks the
   // same device even if the form is edited afterwards.
   const [scanned, setScanned] = useState<{ host: string; username: string; password: string; port: number } | null>(null);
@@ -208,6 +209,8 @@ export function Scan() {
               onVerify={scanned && !isRunning ? handleVerify : undefined}
             />
           )}
+
+          {result && scanId !== null && <KnownCves key={scanId} scanId={scanId} />}
         </div>
       </div>
     </div>

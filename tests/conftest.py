@@ -24,7 +24,16 @@ def isolated_history_db(tmp_path, monkeypatch):
     """
     db_path = tmp_path / "scan_history.db"
     monkeypatch.setenv("ROUTER_SECURITY_DB", str(db_path))
+    # Keep the background scheduler out of tests that start the app lifespan,
+    # and keep credential keys out of the real data directory.
+    monkeypatch.setenv("ROUTER_SECURITY_SCHEDULER", "0")
+    monkeypatch.delenv("ROUTER_SECURITY_SECRET_KEY", raising=False)
+    monkeypatch.delenv("ROUTER_SECURITY_SECRET_KEY_FILE", raising=False)
+    from api import scheduler as _scheduler_mod
+
+    _scheduler_mod.set_scheduler(None)
     yield db_path
+    _scheduler_mod.set_scheduler(None)
 
 
 @pytest.fixture

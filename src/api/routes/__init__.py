@@ -7,6 +7,7 @@ from api.routes.history import router as history_router
 from api.routes.export import router as export_router
 from api.routes.filesystem import router as filesystem_router
 from api.routes.batch import rest_router as batch_rest_router
+from api.routes.schedules import router as schedules_router
 
 api_router = APIRouter(prefix="/api")
 api_router.include_router(scan_rest_router, tags=["scan"])
@@ -15,3 +16,4 @@ api_router.include_router(history_router, tags=["history"])
 api_router.include_router(export_router, tags=["export"])
 api_router.include_router(filesystem_router, tags=["filesystem"])
 api_router.include_router(batch_rest_router, tags=["batch"])
+api_router.include_router(schedules_router, tags=["schedules"])

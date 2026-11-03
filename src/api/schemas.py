@@ -67,6 +67,8 @@ class DeviceInfo(BaseModel):
     firmware_version: str = ""
     uptime: str = ""
     os_release: str = ""
+    dropbear_version: str = ""
+    busybox_version: str = ""
 
 
 class ScanResult(BaseModel):
@@ -203,3 +205,162 @@ class FilesystemResult(BaseModel):
     file_structure: dict[str, Any] = Field(default_factory=dict)
     interesting_files: list[dict[str, Any]] = Field(default_factory=list)
     security_findings: list[dict[str, Any]] = Field(default_factory=list)
+
+
+SCHEDULE_PRESETS = {"hourly": 60, "daily": 24 * 60, "weekly": 7 * 24 * 60}
+
+
+def _validate_schedule_tags(tags):
+    if tags is None:
+        return tags
+    cleaned = []
+    for t in tags:
+        t = t.strip()
+        if not t:
+            continue
+        if len(t) > 32:
+            raise ValueError("Tags must be 32 characters or fewer")
+        if t not in cleaned:
+            cleaned.append(t)
+    if len(cleaned) > 9:  # the "scheduled" tag is always added
+        raise ValueError("At most 9 tags per schedule")
+    return cleaned
+
+
+def _validate_interval(v):
+    from database.schedules import MAX_INTERVAL_MINUTES, MIN_INTERVAL_MINUTES
+
+    if v is not None and not (MIN_INTERVAL_MINUTES <= v <= MAX_INTERVAL_MINUTES):
+        raise ValueError(
+            f"Interval must be between {MIN_INTERVAL_MINUTES} minutes and {MAX_INTERVAL_MINUTES // 1440} days"
+        )
+    return v
+
+
+class ScheduleCreate(BaseModel):
+    target: str = Field(min_length=1, max_length=253)
+    port: int = Field(default=22, ge=1, le=65535)
+    username: str = Field(default="root", min_length=1, max_length=64)
+    password: str = Field(min_length=1, max_length=256)
+    interval_minutes: int = 24 * 60
+    name: str = Field(default="", max_length=80)
+    tags: list[str] = Field(default_factory=list)
+    enabled: bool = True
+    run_immediately: bool = False
+
+    @field_validator("target")
+    @classmethod
+    def _target(cls, v: str) -> str:
+        v = v.strip()
+        if not v or any(c.isspace() for c in v) or "/" in v:
+            raise ValueError("Target must be a single host name or IP address")
+        return v
+
+    @field_validator("tags")
+    @classmethod
+    def _tags(cls, v):
+        return _validate_schedule_tags(v)
+
+    @field_validator("interval_minutes")
+    @classmethod
+    def _interval(cls, v):
+        return _validate_interval(v)
+
+
+class ScheduleUpdate(BaseModel):
+    port: Optional[int] = Field(default=None, ge=1, le=65535)
+    username: Optional[str] = Field(default=None, min_length=1, max_length=64)
+    password: Optional[str] = Field(default=None, min_length=1, max_length=256)
+    interval_minutes: Optional[int] = None
+    name: Optional[str] = Field(default=None, max_length=80)
+    tags: Optional[list[str]] = None
+    enabled: Optional[bool] = None
+
+    @field_validator("tags")
+    @classmethod
+    def _tags(cls, v):
+        return _validate_schedule_tags(v)
+
+    @field_validator("interval_minutes")
+    @classmethod
+    def _interval(cls, v):
+        return _validate_interval(v)
+
+
+class ScheduleOut(BaseModel):
+    """A schedule as returned by the API. The password is never included."""
+
+    id: int
+    name: str = ""
+    target: str
+    port: int
+    username: str
+    interval_minutes: int
+    enabled: bool
+    tags: list[str] = Field(default_factory=list)
+    next_run_at: str
+    last_run_at: Optional[str] = None
+    last_status: str = "never"  # never | running | ok | error
+    last_scan_id: Optional[int] = None
+    last_error: Optional[str] = None
+    last_risk_score: Optional[float] = None
+    running: bool = False
+    created_at: str
+    has_credential: bool = True
+
+
+class SchedulerStatus(BaseModel):
+    enabled: bool
+    running: bool
+    poll_seconds: float
+    key_source: str  # env | file | not_created
+    schedules: list[ScheduleOut] = Field(default_factory=list)
+class KnownCve(BaseModel):
+    id: str
+    score: Optional[float] = None
+    severity: str = "UNKNOWN"
+    published: str = ""
+    description: str = ""
+    known_exploited: bool = False
+    url: str = ""
+
+
+class CveComponent(BaseModel):
+    key: str
+    name: str
+    vendor: str
+    product: str
+    version: str
+    source: str
+    cpe: str
+    critical_only: bool = False
+    looked_up: bool = False
+    stale: bool = False
+    fetched_at: Optional[str] = None
+    total: int = 0
+    critical: int = 0
+    high: int = 0
+    known_exploited: int = 0
+    max_score: Optional[float] = None
+    cves: list[KnownCve] = Field(default_factory=list)
+
+
+class CveSummary(BaseModel):
+    total: int = 0
+    critical: int = 0
+    high: int = 0
+    known_exploited: int = 0
+    max_score: Optional[float] = None
+    unpatched_critical: bool = False
+
+
+class CveReport(BaseModel):
+    scan_id: int
+    target: str = ""
+    status: str  # ok | partial | unavailable | no_components
+    components: list[CveComponent] = Field(default_factory=list)
+    summary: CveSummary = Field(default_factory=CveSummary)
+    errors: list[str] = Field(default_factory=list)
+    checked_at: str = ""
+    kernel_available: bool = False
+    kernel_included: bool = False
