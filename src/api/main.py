@@ -1,3 +1,4 @@
+import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -51,7 +52,13 @@ app.include_router(api_router)
 app.include_router(scan_ws_router)
 app.include_router(batch_ws_router)
 
-static_path = Path(__file__).parent.parent.parent / "web" / "dist"
+# The repo-relative default only works from a source checkout / editable
+# install; a pip-installed package (e.g. the Docker image) sets
+# ROUTER_SECURITY_WEB_DIST to where the built SPA lives.
+static_path = Path(
+    os.environ.get("ROUTER_SECURITY_WEB_DIST")
+    or Path(__file__).parent.parent.parent / "web" / "dist"
+)
 if static_path.exists():
     app.mount("/assets", StaticFiles(directory=str(static_path / "assets")), name="assets")
 

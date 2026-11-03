@@ -22,6 +22,12 @@ All four v1.1 roadmap items.
 
 ### Fixed
 
+- **Docker image**: the published image (since 1.0.0) served no web UI and
+  only listened on the container's loopback, so `-p 8000:8000` did not work.
+  It now serves the dashboard, listens on all interfaces, and keeps history in
+  the `/app/data` volume. New `ROUTER_SECURITY_HOST`, `ROUTER_SECURITY_PORT`,
+  and `ROUTER_SECURITY_WEB_DIST` overrides; the local default stays loopback.
+  CI now builds and smoke-tests the image on every PR.
 - Scanning a device that matches no vendor profile crashed with a 500. (#30)
 - Scans started from the web dashboard were never saved to history. (#28)
 - History filters ran after the result limit, so older matching scans could
