@@ -1,6 +1,6 @@
 # Roadmap
 
-## v1.1 — Scan Intelligence
+## v1.1 — Scan Intelligence ✅ (shipped in 1.1.0)
 
 Focus: Make existing scan data more actionable.
 
