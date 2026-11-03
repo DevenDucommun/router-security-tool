@@ -6,6 +6,7 @@ Stores and manages historical vulnerability scan results using SQLite.
 import sqlite3
 import json
 import logging
+import os
 from datetime import datetime
 from typing import List, Dict, Any, Optional
 from pathlib import Path
@@ -24,8 +25,11 @@ class ScanHistoryDB:
             db_path: Path to SQLite database file (default: data/scan_history.db)
         """
         if db_path is None:
-            # Default to data directory in project root
-            db_path = Path(__file__).parent.parent.parent / "data" / "scan_history.db"
+            # ROUTER_SECURITY_DB overrides the location (tests point it at a temp file);
+            # otherwise default to the data directory in the project root.
+            db_path = os.environ.get("ROUTER_SECURITY_DB") or (
+                Path(__file__).parent.parent.parent / "data" / "scan_history.db"
+            )
         
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)

@@ -205,9 +205,11 @@ async def scan_websocket(ws: WebSocket):
 
         start = time.time()
         progress_queue: asyncio.Queue = asyncio.Queue()
+        loop = asyncio.get_running_loop()
 
         def sync_progress(msg):
-            progress_queue.put_nowait(msg)
+            # Runs in the worker thread; asyncio.Queue is not thread-safe.
+            loop.call_soon_threadsafe(progress_queue.put_nowait, msg)
 
         scan_task = asyncio.create_task(
             asyncio.to_thread(_run_ssh_assessment, host, port, username, password, sync_progress)

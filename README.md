@@ -19,6 +19,7 @@ A full-stack security assessment platform for network devices. Connects to route
 - **Scan comparison** — diff two scans of the same device: new, resolved, and still-open findings plus the risk change
 - **Tags & notes** on scans (e.g. `pre-patch`, `post-update`) with tag filtering in History
 - **Verify fix** — after remediating, re-run only the checks behind a finding (or all findings) and see Resolved / Still failing, without a full rescan
+- **Batch scanning** — scan up to 256 devices in parallel from a list, CIDR (`10.0.0.0/29`), range (`192.168.1.10-20`), or uploaded hosts file, with per-device progress and a fleet summary (riskiest devices, most common findings)
 - **Remote filesystem explorer** with security finding annotations
 - **Multi-format export** (JSON, HTML, PDF) for reporting
 - **CLI mode** with exit codes suitable for CI/CD pipelines
@@ -114,6 +115,8 @@ Adding a new profile: subclass `DeviceProfile`, implement `matches()` and `run_c
 | GET | `/api/health` | Health check |
 | POST | `/api/scan` | Run assessment (returns full result) |
 | POST | `/api/scan/verify` | Re-run only the checks behind the given finding IDs (not saved to history) |
+| POST | `/api/targets/parse` | Preview how a batch target list expands |
+| WS | `/ws/batch` | Batch scan with per-device progress and a fleet summary |
 | WS | `/ws/scan` | Run assessment with real-time progress |
 | GET | `/api/devices` | Auto-discover network devices |
 | GET | `/api/history` | List scan history (filterable by target, risk level, tag) |
