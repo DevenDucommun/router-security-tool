@@ -6,6 +6,8 @@ interface UseScanWebSocketReturn {
   disconnect: () => void;
   messages: string[];
   result: ScanResult | null;
+  /** History ID the finished scan was saved under (null if saving failed). */
+  scanId: number | null;
   error: string | null;
   isRunning: boolean;
 }
@@ -14,6 +16,7 @@ export function useScanWebSocket(): UseScanWebSocketReturn {
   const ws = useRef<WebSocket | null>(null);
   const [messages, setMessages] = useState<string[]>([]);
   const [result, setResult] = useState<ScanResult | null>(null);
+  const [scanId, setScanId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isRunning, setIsRunning] = useState(false);
 
@@ -32,6 +35,7 @@ export function useScanWebSocket(): UseScanWebSocketReturn {
     (host: string, username: string, password: string, port = 22) => {
       setMessages([]);
       setResult(null);
+      setScanId(null);
       setError(null);
       setIsRunning(true);
       gotResult.current = false;
@@ -55,6 +59,7 @@ export function useScanWebSocket(): UseScanWebSocketReturn {
         } else if (msg.type === "result") {
           gotResult.current = true;
           setResult(msg.data || null);
+          setScanId(msg.scan_id ?? null);
           setIsRunning(false);
         } else if (msg.type === "error") {
           gotError.current = true;
@@ -79,5 +84,5 @@ export function useScanWebSocket(): UseScanWebSocketReturn {
     []
   );
 
-  return { connect, disconnect, messages, result, error, isRunning };
+  return { connect, disconnect, messages, result, scanId, error, isRunning };
 }

@@ -31,7 +31,7 @@ Focus: Continuous security posture visibility without manual intervention.
 |---------|-------------|
 | **Scheduled Scans** | Cron-style scheduling per device. Configure frequency (hourly/daily/weekly) and credential storage (encrypted at rest). Background worker runs scans on schedule. |
 | **Risk Score Alerting** | Configurable thresholds: notify via webhook (Slack, Teams, generic HTTP) when risk score exceeds threshold or increases by N points between scans. |
-| **CVE Correlation** | Pull NVD/CVE feeds for detected firmware versions. Show known CVEs alongside scan findings. Flag devices running firmware with unpatched critical CVEs. |
+| **CVE Correlation** ✅ | Pull NVD/CVE feeds for detected firmware versions. Show known CVEs alongside scan findings. Flag devices running firmware with unpatched critical CVEs. |
 | **Dashboard Enhancements** | Fleet health heatmap (devices as colored tiles by risk). Alert history timeline. "Devices needing attention" priority list. |
 
 ### Technical Work

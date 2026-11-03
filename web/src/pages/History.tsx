@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Trash2, Download, BarChart3, GitCompare, Tag, StickyNote } from "lucide-react";
+import { Trash2, Download, BarChart3, GitCompare, Tag, StickyNote, ShieldAlert } from "lucide-react";
+import { KnownCves } from "../components/scan/KnownCves";
 import { api } from "../api/client";
 import { RiskTrend } from "../components/charts/RiskTrend";
 import { AnnotationEditor } from "../components/history/AnnotationEditor";
@@ -15,6 +16,7 @@ export function History() {
   const [tagFilter, setTagFilter] = useState("");
   const [allTags, setAllTags] = useState<string[]>([]);
   const [editingId, setEditingId] = useState<number | null>(null);
+  const [cveId, setCveId] = useState<number | null>(null);
   const [showStats, setShowStats] = useState(false);
   const [selected, setSelected] = useState<number[]>([]);
   const navigate = useNavigate();
@@ -274,6 +276,13 @@ export function History() {
                           <Tag className="w-3 h-3" />
                         </button>
                         <button
+                          onClick={() => setCveId(cveId === scan.id ? null : scan.id)}
+                          className={`p-1 rounded ${cveId === scan.id ? "text-amber-400" : "text-gray-500 hover:text-amber-400"}`}
+                          title="Known CVEs"
+                        >
+                          <ShieldAlert className="w-3 h-3" />
+                        </button>
+                        <button
                           onClick={() => handleExport(scan.id, "json")}
                           className="p-1 text-gray-500 hover:text-emerald-400 rounded"
                           title="Export JSON"
@@ -298,6 +307,13 @@ export function History() {
                           onSave={(update) => handleSaveAnnotations(scan.id, update)}
                           onCancel={() => setEditingId(null)}
                         />
+                      </td>
+                    </tr>
+                  )}
+                  {cveId === scan.id && (
+                    <tr className="bg-gray-950/60">
+                      <td colSpan={11} className="p-3">
+                        <KnownCves scanId={scan.id} />
                       </td>
                     </tr>
                   )}

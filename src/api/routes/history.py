@@ -3,7 +3,7 @@ from typing import Optional
 
 from fastapi import APIRouter, HTTPException
 
-from api.schemas import ScanHistoryEntry, HistoryStats, ScanDiff, ScanAnnotationUpdate
+from api.schemas import ScanHistoryEntry, HistoryStats, ScanDiff, ScanAnnotationUpdate, CveReport
 
 router = APIRouter()
 
@@ -127,6 +127,36 @@ async def get_scan(scan_id: int):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/history/{scan_id}/cves", response_model=CveReport)
+def get_scan_cves(scan_id: int, refresh: bool = False, kernel: bool = False):
+    """Known CVEs (from NVD) for the software versions recorded in a scan.
+
+    Sync on purpose: NVD lookups block and are rate limited, so FastAPI runs
+    this in its threadpool. Results are cached for 24 hours; ``refresh``
+    forces a new lookup and ``kernel`` adds critical Linux kernel CVEs.
+    """
+    from assessment import cve_correlation as cc
+
+    with _db() as db:
+        scan = db.get_scan_by_id(scan_id)
+    if scan is None:
+        raise HTTPException(status_code=404, detail="Scan not found")
+
+    device_info = scan.get("device_info") or {}
+    if not isinstance(device_info, dict):
+        device_info = {}
+
+    components = cc.identify_components(device_info, include_kernel=kernel)
+    report = cc.correlate(components, refresh=refresh)
+    return {
+        **report,
+        "scan_id": scan_id,
+        "target": scan.get("target", ""),
+        "kernel_available": cc.kernel_available(device_info),
+        "kernel_included": kernel,
+    }
 
 
 @router.patch("/history/{scan_id}", response_model=ScanHistoryEntry)

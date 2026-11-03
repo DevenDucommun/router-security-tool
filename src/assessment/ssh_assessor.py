@@ -178,6 +178,16 @@ class SSHAssessor:
         if fw_version:
             info["firmware_version"] = fw_version
 
+        # Versions of common embedded components, used for CVE correlation.
+        # Only keep real banners, not "sh: dropbear: not found".
+        dropbear = self._cmd("dropbear -V 2>&1 | head -n 1")
+        if re.search(r"dropbear\s+v?\d", dropbear, re.I):
+            info["dropbear_version"] = dropbear
+
+        busybox = self._cmd("busybox 2>&1 | head -n 1")
+        if re.match(r"busybox\s+v?\d", busybox, re.I):
+            info["busybox_version"] = busybox
+
         return info
 
     def _check_ssh_config(self):
