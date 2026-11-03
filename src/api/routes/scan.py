@@ -5,7 +5,15 @@ import time
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException
 
-from api.schemas import ScanRequest, ScanResult, Finding, DeviceInfo
+from api.schemas import (
+    ScanRequest,
+    ScanResult,
+    Finding,
+    DeviceInfo,
+    VerifyRequest,
+    VerifyResult,
+    VerifyItem,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -14,6 +22,14 @@ ws_router = APIRouter()
 
 
 def _run_ssh_assessment(host: str, port: int, username: str, password: str, progress_callback=None):
+    return _with_assessor(host, port, username, password, progress_callback, lambda a: a.run_assessment())
+
+
+def _run_ssh_verification(host: str, port: int, username: str, password: str, check_ids: list):
+    return _with_assessor(host, port, username, password, None, lambda a: a.run_verification(check_ids))
+
+
+def _with_assessor(host, port, username, password, progress_callback, action):
     from connections.manager import ConnectionManager
     from assessment.ssh_assessor import SSHAssessor
 
@@ -29,12 +45,9 @@ def _run_ssh_assessment(host: str, port: int, username: str, password: str, prog
         progress_callback("Running security assessment...")
 
     try:
-        assessor = SSHAssessor(conn)
-        results = assessor.run_assessment()
+        return action(SSHAssessor(conn))
     finally:
         conn.disconnect()
-
-    return results
 
 
 def _build_scan_result(results: dict, host: str, duration: float) -> ScanResult:
@@ -55,7 +68,8 @@ def _build_scan_result(results: dict, host: str, duration: float) -> ScanResult:
 
     return ScanResult(
         target=host,
-        profile=results.get("profile", "generic"),
+        # The assessor reports profile=None when no vendor profile matches.
+        profile=results.get("profile") or "generic",
         device_info=DeviceInfo(
             hostname=device.get("hostname", ""),
             uname=device.get("uname", ""),
@@ -112,6 +126,43 @@ async def run_scan(request: ScanRequest):
     scan_result = _build_scan_result(results, request.host, duration)
     _persist_scan(scan_result)
     return scan_result
+
+
+@rest_router.post("/scan/verify", response_model=VerifyResult)
+async def verify_fixes(request: VerifyRequest):
+    """
+    Re-run only the checks behind the given finding IDs ("verify fix").
+
+    Not saved to history: a partial run would distort trends and diffs.
+    """
+    password = request.password or os.environ.get("ROUTER_PASS", "")
+    if not password:
+        raise HTTPException(status_code=400, detail="Password required (body or ROUTER_PASS env var)")
+
+    start = time.time()
+    try:
+        results = await asyncio.to_thread(
+            _run_ssh_verification, request.host, request.port, request.username, password, request.check_ids
+        )
+    except ConnectionError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Verification failed: {e}")
+
+    findings = _build_scan_result(results, request.host, time.time() - start).findings
+    titles = {f.id: f.title for f in findings}
+    statuses = results.get("verification", {})
+    return VerifyResult(
+        target=request.host,
+        profile=results.get("profile"),
+        results=[
+            VerifyItem(id=cid, status=statuses.get(cid, "unknown"), title=titles.get(cid, ""))
+            for cid in request.check_ids
+        ],
+        findings=findings,
+        checks_run=results.get("families_run", []),
+        scan_duration=time.time() - start,
+    )
 
 
 def _persist_scan(scan_result: ScanResult):

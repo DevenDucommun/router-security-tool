@@ -6,6 +6,7 @@ import type {
   FilesystemResult,
   ScanDiff,
   ScanAnnotationUpdate,
+  VerifyResult,
 } from "../types";
 
 const BASE = "/api";
@@ -31,6 +32,12 @@ export const api = {
     request<ScanResult>("/scan", {
       method: "POST",
       body: JSON.stringify({ host, port, username, password }),
+    }),
+
+  verify: (host: string, username: string, password: string, port: number, checkIds: string[]) =>
+    request<VerifyResult>("/scan/verify", {
+      method: "POST",
+      body: JSON.stringify({ host, port, username, password, check_ids: checkIds }),
     }),
 
   devices: () =>

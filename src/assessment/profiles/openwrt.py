@@ -10,9 +10,9 @@ Checks specific to OpenWrt-based devices:
 """
 
 import re
-from typing import Dict, List, Optional, Callable
+from typing import Dict
 
-from assessment.finding import Finding, SEVERITY_HIGH, SEVERITY_MEDIUM, SEVERITY_LOW, SEVERITY_INFO
+from assessment.finding import SEVERITY_HIGH, SEVERITY_MEDIUM, SEVERITY_LOW, SEVERITY_INFO
 from .base import DeviceProfile
 
 
@@ -40,23 +40,14 @@ class OpenWrtProfile(DeviceProfile):
 
         return min(score, 1.0)
 
-    def run_checks(self, progress_callback: Optional[Callable[[str], None]] = None) -> List[Finding]:
-        self.findings = []
-
-        checks = [
-            ("Auditing UCI firewall zones...", self._check_firewall_zones),
-            ("Checking LuCI web exposure...", self._check_luci_exposure),
-            ("Auditing installed packages...", self._check_packages),
-            ("Checking wireless security...", self._check_wireless_config),
-            ("Checking DNS/DHCP config...", self._check_dhcp_dns),
-            ("Checking for update channels...", self._check_update_config),
-        ]
-
-        for msg, check_fn in checks:
-            self._emit(msg, progress_callback)
-            check_fn()
-
-        return self.findings
+    CHECKS = [
+        ("Auditing UCI firewall zones...", "_check_firewall_zones", ("OWRT-FW",)),
+        ("Checking LuCI web exposure...", "_check_luci_exposure", ("OWRT-WEB",)),
+        ("Auditing installed packages...", "_check_packages", ("OWRT-PKG",)),
+        ("Checking wireless security...", "_check_wireless_config", ("OWRT-WIFI",)),
+        ("Checking DNS/DHCP config...", "_check_dhcp_dns", ("OWRT-DNS",)),
+        ("Checking for update channels...", "_check_update_config", ("OWRT-UPD",)),
+    ]
 
     def _check_firewall_zones(self):
         """Audit UCI firewall zone configuration."""

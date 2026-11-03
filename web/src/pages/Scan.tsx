@@ -1,8 +1,8 @@
 import { useState } from "react";
-import { Scan as ScanIcon, Download, Wifi } from "lucide-react";
+import { Scan as ScanIcon, Download, Wifi, RefreshCw } from "lucide-react";
 import { useScanWebSocket } from "../api/ws";
 import { api } from "../api/client";
-import { FindingCard } from "../components/scan/FindingCard";
+import { FindingCard, type VerifyState } from "../components/scan/FindingCard";
 import { ProgressFeed } from "../components/scan/ProgressFeed";
 import { RiskGauge } from "../components/charts/RiskGauge";
 import { SeverityChart } from "../components/charts/SeverityChart";
@@ -17,10 +17,36 @@ export function Scan() {
   const [discovering, setDiscovering] = useState(false);
 
   const { connect, messages, result, error, isRunning } = useScanWebSocket();
+  // Credentials of the scan whose results are shown, so "Verify fix" re-checks the
+  // same device even if the form is edited afterwards.
+  const [scanned, setScanned] = useState<{ host: string; username: string; password: string; port: number } | null>(null);
+  const [verify, setVerify] = useState<Record<string, VerifyState>>({});
+  const [verifyError, setVerifyError] = useState<string | null>(null);
 
   const handleScan = () => {
     if (!host || !password) return;
-    connect(host, username, password, parseInt(port));
+    const target = { host, username, password, port: parseInt(port) };
+    setScanned(target);
+    setVerify({});
+    setVerifyError(null);
+    connect(target.host, target.username, target.password, target.port);
+  };
+
+  const handleVerify = async (ids: string[]) => {
+    if (!scanned || ids.length === 0) return;
+    setVerifyError(null);
+    setVerify((prev) => ({ ...prev, ...Object.fromEntries(ids.map((id) => [id, "checking" as const])) }));
+    try {
+      const res = await api.verify(scanned.host, scanned.username, scanned.password, scanned.port, ids);
+      setVerify((prev) => ({ ...prev, ...Object.fromEntries(res.results.map((r) => [r.id, r.status])) }));
+    } catch (e) {
+      setVerify((prev) => {
+        const next = { ...prev };
+        for (const id of ids) delete next[id];
+        return next;
+      });
+      setVerifyError(e instanceof Error ? e.message : "Verification failed");
+    }
   };
 
   const handleDiscover = async () => {
@@ -168,7 +194,20 @@ export function Scan() {
             </div>
           )}
 
-          {result && <ScanResults result={result} onExport={handleExport} />}
+          {verifyError && (
+            <div className="bg-red-500/10 border border-red-500/30 rounded-md p-3 text-sm text-red-400">
+              Verify fix: {verifyError}
+            </div>
+          )}
+
+          {result && (
+            <ScanResults
+              result={result}
+              onExport={handleExport}
+              verify={verify}
+              onVerify={scanned && !isRunning ? handleVerify : undefined}
+            />
+          )}
         </div>
       </div>
     </div>
@@ -178,11 +217,17 @@ export function Scan() {
 function ScanResults({
   result,
   onExport,
+  verify,
+  onVerify,
 }: {
   result: ScanResult;
   onExport: (format: "json" | "html" | "pdf") => void;
+  verify: Record<string, VerifyState>;
+  onVerify?: (ids: string[]) => void;
 }) {
   const severities = ["Critical", "High", "Medium", "Low", "Info"] as const;
+  const anyChecking = Object.values(verify).includes("checking");
+  const resolvedCount = Object.values(verify).filter((s) => s === "resolved").length;
 
   return (
     <div className="space-y-4">
@@ -216,6 +261,24 @@ function ScanResults({
             {fmt.toUpperCase()}
           </button>
         ))}
+        {onVerify && result.findings.length > 0 && (
+          <div className="ml-auto flex items-center gap-2">
+            {resolvedCount > 0 && (
+              <span className="text-xs text-emerald-400">
+                {resolvedCount}/{result.findings.length} resolved
+              </span>
+            )}
+            <button
+              onClick={() => onVerify([...new Set(result.findings.map((f) => f.id))])}
+              disabled={anyChecking}
+              title="Re-run only the checks behind these findings"
+              className="flex items-center gap-1 px-2 py-1 text-xs text-gray-300 hover:text-white bg-gray-800 hover:bg-gray-700 disabled:opacity-50 rounded transition-colors"
+            >
+              <RefreshCw className={`w-3 h-3 ${anyChecking ? "animate-spin" : ""}`} />
+              Re-check all
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Findings */}
@@ -229,7 +292,12 @@ function ScanResults({
           return (
             <div key={sev} className="space-y-1">
               {findings.map((f) => (
-                <FindingCard key={f.id} finding={f} />
+                <FindingCard
+                  key={f.id}
+                  finding={f}
+                  verifyState={verify[f.id]}
+                  onVerify={onVerify ? () => onVerify([f.id]) : undefined}
+                />
               ))}
             </div>
           );

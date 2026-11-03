@@ -28,6 +28,23 @@ export interface ScanResult {
   scan_duration: number;
 }
 
+export type VerifyStatus = "resolved" | "still_failing" | "unknown";
+
+export interface VerifyItem {
+  id: string;
+  status: VerifyStatus;
+  title: string;
+}
+
+export interface VerifyResult {
+  target: string;
+  profile: string | null;
+  results: VerifyItem[];
+  findings: Finding[];
+  checks_run: string[];
+  scan_duration: number;
+}
+
 export interface ScanHistoryEntry {
   id: number;
   target: string;

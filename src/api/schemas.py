@@ -10,6 +10,39 @@ class ScanRequest(BaseModel):
     password: Optional[str] = None
 
 
+MAX_VERIFY_IDS = 50
+
+
+class VerifyRequest(BaseModel):
+    host: str
+    port: int = 22
+    username: str = "root"
+    password: Optional[str] = None
+    check_ids: list[str] = Field(min_length=1, max_length=MAX_VERIFY_IDS)
+
+    @field_validator("check_ids")
+    @classmethod
+    def clean_ids(cls, ids: list[str]) -> list[str]:
+        cleaned = list(dict.fromkeys(i.strip() for i in ids if i and i.strip()))
+        if not cleaned:
+            raise ValueError("check_ids must contain at least one finding ID")
+        if any(len(i) > 64 for i in cleaned):
+            raise ValueError("finding IDs must be at most 64 characters")
+        return cleaned
+
+
+class VerifyStatus(str, Enum):
+    resolved = "resolved"
+    still_failing = "still_failing"
+    unknown = "unknown"
+
+
+class VerifyItem(BaseModel):
+    id: str
+    status: VerifyStatus
+    title: str = ""
+
+
 class Severity(str, Enum):
     critical = "Critical"
     high = "High"
@@ -43,6 +76,15 @@ class ScanResult(BaseModel):
     findings: list[Finding] = Field(default_factory=list)
     severity_summary: dict[str, int] = Field(default_factory=dict)
     risk_score: float = 0.0
+    scan_duration: float = 0.0
+
+
+class VerifyResult(BaseModel):
+    target: str
+    profile: Optional[str] = None
+    results: list[VerifyItem] = Field(default_factory=list)
+    findings: list[Finding] = Field(default_factory=list)
+    checks_run: list[str] = Field(default_factory=list)
     scan_duration: float = 0.0
 
 
