@@ -59,3 +59,27 @@ jobs:
 
       - name: Type-check and build
         run: npm run build
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Build image (no push)
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          push: false
+          tags: router-security-tool:ci
+
+      - name: Smoke-test the image
+        run: |
+          docker run -d --name rst -p 8000:8000 router-security-tool:ci
+          for i in $(seq 1 30); do
+            curl -fsS http://localhost:8000/api/health && break
+            sleep 1
+          done
+          curl -fsS http://localhost:8000/api/health | grep -q '"status":"ok"' || { docker logs rst; exit 1; }
+          # The SPA must be served, not just the API.
+          curl -fsS http://localhost:8000/ | grep -qi '<div id="root"' || { docker logs rst; exit 1; }
+          curl -fsS http://localhost:8000/history | grep -qi '<div id="root"' || { docker logs rst; exit 1; }

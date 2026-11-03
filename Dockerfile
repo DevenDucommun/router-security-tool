@@ -22,6 +22,14 @@ RUN pip install --no-cache-dir . && \
 
 COPY --from=frontend /app/web/dist web/dist/
 
+# The package is installed into site-packages, so point it at the SPA and a
+# persistent history location explicitly, and listen on all interfaces so a
+# published port works.
+ENV ROUTER_SECURITY_HOST=0.0.0.0 \
+    ROUTER_SECURITY_WEB_DIST=/app/web/dist \
+    ROUTER_SECURITY_DB=/app/data/scan_history.db
+VOLUME /app/data
+
 EXPOSE 8000
 
 ENTRYPOINT ["router-security-web"]

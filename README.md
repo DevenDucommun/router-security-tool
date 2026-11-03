@@ -66,7 +66,9 @@ router-security-web
 
 ```bash
 docker build -t router-security-tool .
-docker run --rm -p 8000:8000 --network host router-security-tool
+docker run --rm -p 8000:8000 -v rst-data:/app/data router-security-tool
+# or the published image: ghcr.io/devenducommun/router-security-tool:latest
+# On Linux, add --network host (and drop -p) if routers are only reachable from the host network.
 ```
 
 ### CLI Only (no Node.js required)
@@ -134,7 +136,7 @@ Interactive API docs: `http://localhost:8000/docs` (Swagger UI)
 ## Testing
 
 ```bash
-# Unit tests (234 tests covering API, profiles, CLI, scanner, database, export)
+# Unit tests (300+ tests covering API, profiles, CLI, scanner, database, export, diff, batch)
 pytest tests/unit/ -v
 
 # Integration tests against a live device
@@ -164,7 +166,7 @@ web/
 │   └── hooks/        # Keyboard shortcuts
 └── vite.config.ts    # Dev proxy + Tailwind
 tests/
-├── unit/             # 234 unit tests
+├── unit/             # 300+ unit tests
 └── integration/      # Live device tests (requires SSH access)
 ```
 
