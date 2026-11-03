@@ -1,5 +1,25 @@
 # Changelog
 
+## Unreleased (1.2 — Monitoring & Alerts)
+
+### Added
+
+- **Scheduled scans**: re-scan a device hourly, every 6 hours, daily, weekly, or
+  any interval from 15 minutes to 30 days. A background worker in the web
+  server runs due scans (two at a time) through the normal scan path; results
+  are saved to History tagged `scheduled` plus the schedule's tags. New
+  Schedules page: create, run now, pause/resume, change interval or password,
+  delete, and see last status, error, risk score, and scan.
+- **Encrypted credential store**: schedule passwords are encrypted with Fernet
+  (`ROUTER_SECURITY_SECRET_KEY`, or a 0600 key file next to the database) and
+  are never returned by the API.
+
+### Fixed
+
+- Opening a pre-1.1 history database from several scans at once (batch or
+  scheduled) could fail with `duplicate column name: tags`.
+- API validation errors showed as `[object Object]` in the web app.
+
 ## 1.1.0 — Scan Intelligence
 
 All four v1.1 roadmap items.

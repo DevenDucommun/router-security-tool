@@ -153,3 +153,47 @@ export interface WSMessage {
   message?: string;
   data?: ScanResult;
 }
+
+export type ScheduleStatus = "never" | "running" | "ok" | "error";
+
+export interface Schedule {
+  id: number;
+  name: string;
+  target: string;
+  port: number;
+  username: string;
+  interval_minutes: number;
+  enabled: boolean;
+  tags: string[];
+  next_run_at: string;
+  last_run_at: string | null;
+  last_status: ScheduleStatus;
+  last_scan_id: number | null;
+  last_error: string | null;
+  last_risk_score: number | null;
+  running: boolean;
+  created_at: string;
+  has_credential: boolean;
+}
+
+export interface SchedulerStatus {
+  enabled: boolean;
+  running: boolean;
+  poll_seconds: number;
+  key_source: "env" | "file" | "not_created";
+  schedules: Schedule[];
+}
+
+export interface ScheduleCreate {
+  target: string;
+  port: number;
+  username: string;
+  password: string;
+  interval_minutes: number;
+  name?: string;
+  tags?: string[];
+  enabled?: boolean;
+  run_immediately?: boolean;
+}
+
+export type ScheduleUpdate = Partial<Omit<ScheduleCreate, "target" | "run_immediately">>;

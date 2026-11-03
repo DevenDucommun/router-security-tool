@@ -113,10 +113,18 @@ class ScanHistoryDB:
         """Add tags/notes columns to databases created before v1.1."""
         cursor.execute("PRAGMA table_info(scans)")
         columns = {row["name"] for row in cursor.fetchall()}
-        if "tags" not in columns:
-            cursor.execute("ALTER TABLE scans ADD COLUMN tags TEXT NOT NULL DEFAULT '[]'")
-        if "notes" not in columns:
-            cursor.execute("ALTER TABLE scans ADD COLUMN notes TEXT NOT NULL DEFAULT ''")
+        for name, ddl in (
+            ("tags", "ALTER TABLE scans ADD COLUMN tags TEXT NOT NULL DEFAULT '[]'"),
+            ("notes", "ALTER TABLE scans ADD COLUMN notes TEXT NOT NULL DEFAULT ''"),
+        ):
+            if name in columns:
+                continue
+            try:
+                cursor.execute(ddl)
+            except sqlite3.OperationalError as e:
+                # Another connection (parallel batch/scheduled scan) migrated first.
+                if "duplicate column" not in str(e).lower():
+                    raise
 
     @staticmethod
     def _row_to_summary(row) -> Dict[str, Any]:

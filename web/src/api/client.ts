@@ -8,6 +8,10 @@ import type {
   ScanAnnotationUpdate,
   VerifyResult,
   TargetPreview,
+  Schedule,
+  SchedulerStatus,
+  ScheduleCreate,
+  ScheduleUpdate,
 } from "../types";
 
 const BASE = "/api";
@@ -20,7 +24,16 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({ detail: response.statusText }));
-    throw new Error(error.detail || `Request failed: ${response.status}`);
+    // Validation errors (422) arrive as a list of {loc, msg}.
+    const detail = Array.isArray(error.detail)
+      ? error.detail
+          .map((d: { loc?: unknown[]; msg?: string }) => {
+            const field = d.loc?.slice(1).join(".");
+            return field ? `${field}: ${d.msg}` : d.msg;
+          })
+          .join("; ")
+      : error.detail;
+    throw new Error(detail || `Request failed: ${response.status}`);
   }
 
   return response.json();
@@ -66,6 +79,20 @@ export const api = {
     }),
 
   getScan: (id: number) => request<ScanResult>(`/history/${id}`),
+
+  schedules: () => request<SchedulerStatus>("/schedules"),
+
+  createSchedule: (body: ScheduleCreate) =>
+    request<Schedule>("/schedules", { method: "POST", body: JSON.stringify(body) }),
+
+  updateSchedule: (id: number, body: ScheduleUpdate) =>
+    request<Schedule>(`/schedules/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+
+  deleteSchedule: (id: number) =>
+    request<{ status: string }>(`/schedules/${id}`, { method: "DELETE" }),
+
+  runSchedule: (id: number) =>
+    request<Schedule>(`/schedules/${id}/run`, { method: "POST" }),
 
   diffScans: (base: number, head: number) =>
     request<ScanDiff>(`/history/diff?base=${base}&head=${head}`),

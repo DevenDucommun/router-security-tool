@@ -141,3 +141,39 @@ class TestAnnotationEndpoint:
             db.update_annotations(sid, tags=["a"])
         response = client.patch(f"/api/history/{sid}", json={"tags": ["  ", ""]})
         assert response.json()["tags"] == []
+
+
+def test_concurrent_first_open_migrates_once(tmp_path):
+    """Parallel scans opening a pre-v1.1 database must not race on ALTER TABLE."""
+    import sqlite3
+    import threading
+
+    from database.scan_history import ScanHistoryDB
+
+    db_path = tmp_path / "old.db"
+    ScanHistoryDB(str(db_path)).close()
+    conn = sqlite3.connect(db_path)
+    # Rebuild the scans table without the v1.1 columns.
+    cols = [r[1] for r in conn.execute("PRAGMA table_info(scans)") if r[1] not in ("tags", "notes")]
+    conn.executescript(
+        f"CREATE TABLE s2 AS SELECT {', '.join(cols)} FROM scans; DROP TABLE scans; ALTER TABLE s2 RENAME TO scans;"
+    )
+    conn.close()
+
+    errors, barrier = [], threading.Barrier(6)
+
+    def opener():
+        barrier.wait()
+        try:
+            ScanHistoryDB(str(db_path)).close()
+        except Exception as e:  # pragma: no cover - the regression
+            errors.append(e)
+
+    threads = [threading.Thread(target=opener) for _ in range(6)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert errors == []
+    names = {r[1] for r in sqlite3.connect(db_path).execute("PRAGMA table_info(scans)")}
+    assert {"tags", "notes"} <= names

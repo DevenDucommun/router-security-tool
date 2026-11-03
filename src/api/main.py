@@ -25,7 +25,16 @@ APP_VERSION = _package_version()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    yield
+    from api.scheduler import get_scheduler, scheduler_enabled
+
+    scheduler = get_scheduler() if scheduler_enabled() else None
+    if scheduler:
+        scheduler.start()
+    try:
+        yield
+    finally:
+        if scheduler:
+            await scheduler.stop()
 
 
 app = FastAPI(

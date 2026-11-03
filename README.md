@@ -20,6 +20,7 @@ A full-stack security assessment platform for network devices. Connects to route
 - **Tags & notes** on scans (e.g. `pre-patch`, `post-update`) with tag filtering in History
 - **Verify fix** — after remediating, re-run only the checks behind a finding (or all findings) and see Resolved / Still failing, without a full rescan
 - **Batch scanning** — scan up to 256 devices in parallel from a list, CIDR (`10.0.0.0/29`), range (`192.168.1.10-20`), or uploaded hosts file, with per-device progress and a fleet summary (riskiest devices, most common findings)
+- **Scheduled scans** — re-scan devices hourly, daily, or weekly in the background; passwords are encrypted at rest (Fernet) and never returned by the API, and results land in History tagged `scheduled`
 - **Remote filesystem explorer** with security finding annotations
 - **Multi-format export** (JSON, HTML, PDF) for reporting
 - **CLI mode** with exit codes suitable for CI/CD pipelines
@@ -126,12 +127,28 @@ Adding a new profile: subclass `DeviceProfile`, implement `matches()` and `run_c
 | GET | `/api/history/tags` | Tags in use across all scans |
 | GET | `/api/history/diff?base=&head=` | Compare two scans of the same target |
 | GET | `/api/history/{id}` | Full stored scan result |
+| GET / POST | `/api/schedules` | List schedules and scheduler status / create a schedule (password is write-only) |
+| PATCH / DELETE | `/api/schedules/{id}` | Change interval, tags, password, pause/resume / delete |
+| POST | `/api/schedules/{id}/run` | Run a scheduled scan now |
 | PATCH | `/api/history/{id}` | Set tags and/or notes on a scan |
 | DELETE | `/api/history/{id}` | Delete a scan record |
 | POST | `/api/export/{format}` | Generate report (json/html/pdf) |
 | POST | `/api/filesystem` | Explore remote filesystem |
 
 Interactive API docs: `http://localhost:8000/docs` (Swagger UI)
+
+## Scheduled scans
+
+The web server runs a background worker that checks for due schedules every 30 seconds and runs at most two scans at a time. A server that was down catches up with one run per schedule, not one per missed slot.
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `ROUTER_SECURITY_SECRET_KEY` | unset | Fernet key that encrypts stored passwords. Recommended, so the key lives outside the data directory. Generate one with `python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())'` |
+| `ROUTER_SECURITY_SECRET_KEY_FILE` | `secret.key` next to the history DB | Key file used (and created with mode 0600) when no env key is set. Back it up with the database |
+| `ROUTER_SECURITY_SCHEDULER` | `1` | `0` turns the worker off; schedules then only run via **Run now** |
+| `ROUTER_SECURITY_SCHEDULER_POLL` | `30` | Seconds between checks for due schedules |
+
+If the key changes or is lost, stored passwords can't be decrypted: the schedule shows an error and you re-enter the password.
 
 ## Testing
 
