@@ -12,6 +12,7 @@ import type {
   SchedulerStatus,
   ScheduleCreate,
   ScheduleUpdate,
+  CveReport,
 } from "../types";
 
 const BASE = "/api";
@@ -93,6 +94,13 @@ export const api = {
 
   runSchedule: (id: number) =>
     request<Schedule>(`/schedules/${id}/run`, { method: "POST" }),
+  scanCves: (id: number, opts: { refresh?: boolean; kernel?: boolean } = {}) => {
+    const params = new URLSearchParams();
+    if (opts.refresh) params.set("refresh", "true");
+    if (opts.kernel) params.set("kernel", "true");
+    const qs = params.toString();
+    return request<CveReport>(`/history/${id}/cves${qs ? `?${qs}` : ""}`);
+  },
 
   diffScans: (base: number, head: number) =>
     request<ScanDiff>(`/history/diff?base=${base}&head=${head}`),

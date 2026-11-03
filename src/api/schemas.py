@@ -67,6 +67,8 @@ class DeviceInfo(BaseModel):
     firmware_version: str = ""
     uptime: str = ""
     os_release: str = ""
+    dropbear_version: str = ""
+    busybox_version: str = ""
 
 
 class ScanResult(BaseModel):
@@ -313,3 +315,52 @@ class SchedulerStatus(BaseModel):
     poll_seconds: float
     key_source: str  # env | file | not_created
     schedules: list[ScheduleOut] = Field(default_factory=list)
+class KnownCve(BaseModel):
+    id: str
+    score: Optional[float] = None
+    severity: str = "UNKNOWN"
+    published: str = ""
+    description: str = ""
+    known_exploited: bool = False
+    url: str = ""
+
+
+class CveComponent(BaseModel):
+    key: str
+    name: str
+    vendor: str
+    product: str
+    version: str
+    source: str
+    cpe: str
+    critical_only: bool = False
+    looked_up: bool = False
+    stale: bool = False
+    fetched_at: Optional[str] = None
+    total: int = 0
+    critical: int = 0
+    high: int = 0
+    known_exploited: int = 0
+    max_score: Optional[float] = None
+    cves: list[KnownCve] = Field(default_factory=list)
+
+
+class CveSummary(BaseModel):
+    total: int = 0
+    critical: int = 0
+    high: int = 0
+    known_exploited: int = 0
+    max_score: Optional[float] = None
+    unpatched_critical: bool = False
+
+
+class CveReport(BaseModel):
+    scan_id: int
+    target: str = ""
+    status: str  # ok | partial | unavailable | no_components
+    components: list[CveComponent] = Field(default_factory=list)
+    summary: CveSummary = Field(default_factory=CveSummary)
+    errors: list[str] = Field(default_factory=list)
+    checked_at: str = ""
+    kernel_available: bool = False
+    kernel_included: bool = False

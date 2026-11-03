@@ -16,6 +16,8 @@ export interface DeviceInfo {
   firmware_version: string;
   uptime: string;
   os_release: string;
+  dropbear_version?: string;
+  busybox_version?: string;
 }
 
 export interface ScanResult {
@@ -152,6 +154,56 @@ export interface WSMessage {
   type: "progress" | "result" | "error";
   message?: string;
   data?: ScanResult;
+  scan_id?: number | null;
+}
+
+export interface KnownCve {
+  id: string;
+  score: number | null;
+  severity: string;
+  published: string;
+  description: string;
+  known_exploited: boolean;
+  url: string;
+}
+
+export interface CveComponent {
+  key: string;
+  name: string;
+  vendor: string;
+  product: string;
+  version: string;
+  source: string;
+  cpe: string;
+  critical_only: boolean;
+  looked_up: boolean;
+  stale: boolean;
+  fetched_at: string | null;
+  total: number;
+  critical: number;
+  high: number;
+  known_exploited: number;
+  max_score: number | null;
+  cves: KnownCve[];
+}
+
+export interface CveReport {
+  scan_id: number;
+  target: string;
+  status: "ok" | "partial" | "unavailable" | "no_components";
+  components: CveComponent[];
+  summary: {
+    total: number;
+    critical: number;
+    high: number;
+    known_exploited: number;
+    max_score: number | null;
+    unpatched_critical: boolean;
+  };
+  errors: string[];
+  checked_at: string;
+  kernel_available: boolean;
+  kernel_included: boolean;
 }
 
 export type ScheduleStatus = "never" | "running" | "ok" | "error";

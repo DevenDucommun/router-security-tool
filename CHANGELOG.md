@@ -4,6 +4,16 @@
 
 ### Added
 
+- **Known CVEs**: a scan's OpenWrt, Cisco IOS / IOS XE, Dropbear, and BusyBox
+  versions (and, opt-in, critical Linux kernel CVEs) are matched against the
+  NIST NVD, which does the version-range matching. Each component lists its
+  CVEs with severity, CVSS, and a CISA "known exploited" flag, and the device
+  is flagged when it runs software with unpatched critical CVEs. Available on
+  the Scan page and from History (`GET /api/history/{id}/cves`). Results are
+  cached for 24 hours; NVD errors or `ROUTER_SECURITY_OFFLINE=1` fall back to
+  cached data instead of failing. `NVD_API_KEY` raises NVD's rate limit.
+- Scans now record the Dropbear and BusyBox versions and keep the raw
+  `uname` / `os-release` text in history.
 - **Scheduled scans**: re-scan a device hourly, every 6 hours, daily, weekly, or
   any interval from 15 minutes to 30 days. A background worker in the web
   server runs due scans (two at a time) through the normal scan path; results
